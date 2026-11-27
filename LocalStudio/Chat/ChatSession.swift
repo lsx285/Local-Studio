@@ -17,12 +17,37 @@ final class ChatSession {
 
     var canSend: Bool { !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty }
 
+    init() {
+        #if DEBUG
+        // Deterministic reference scenes exist only in simulator/debug builds.
+        guard let scene = ProcessInfo.processInfo.environment["LOCAL_STUDIO_PREVIEW"] else { return }
+        let short = "Short text message"
+        let long = "Long text message that would change the composer!"
+        switch scene {
+        case "short": draft = short
+        case "long": draft = "Long text that can’t fit in here so it changes the composer and makes it look like this!"
+        case "attachments", "attachments-long":
+            draft = scene == "attachments" ? short : long
+            if let url = Bundle.main.url(forResource: "DemoArtwork", withExtension: "jpg"), let data = try? Data(contentsOf: url) {
+                attachments = (0..<4).compactMap { _ in PhotoAttachment(data: data) }
+            }
+        case "conversation":
+            messages = [ChatMessage(role: .user, text: "Hello"), ChatMessage(role: .assistant, text: "Hello! 😊 Lovely to have you here. How’s your day going?")]
+        case "generation":
+            messages = [ChatMessage(role: .user, text: "Generate an image of a pond with various animals residing in it")]
+            generationStarted = .now.addingTimeInterval(-10)
+            isGenerating = true
+        default: break
+        }
+        #endif
+    }
+
     func restore() async {
         guard !restored else { return }
         restored = true
         if ProcessInfo.processInfo.arguments.contains("--ui-testing") { return }
         let saved = await ConversationArchive.shared.load()
-        guard messages.isEmpty, !isTemporary else { return }
+        guard messages.isEmpty, !isTemporary, revision == 0 else { return }
         messages = saved.map {
             ChatMessage(id: $0.id, role: $0.role, text: $0.text,
                         attachments: $0.photos.compactMap { PhotoAttachment(id: $0.id, data: $0.data) }, createdAt: $0.createdAt)

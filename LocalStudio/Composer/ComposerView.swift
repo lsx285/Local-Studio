@@ -115,7 +115,7 @@ struct ComposerView: View {
 
     /// Decode off the main actor and cap memory before a photo enters the view tree.
     nonisolated private static func downsample(_ data: Data) async -> Data? {
-        await Task.detached(priority: .userInitiated) {
+        await Task.detached(priority: .userInitiated) { () -> Data? in
             guard let source = CGImageSourceCreateWithData(data as CFData, nil),
                   let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
                     kCGImageSourceCreateThumbnailFromImageAlways: true,

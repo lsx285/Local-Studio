@@ -3,6 +3,9 @@ import XCTest
 @MainActor
 final class LocalStudioUITests: XCTestCase {
     private var app: XCUIApplication!
+    private var composer: XCUIElement {
+        app.descendants(matching: .any).matching(identifier: "composer").firstMatch
+    }
 
     override func setUp() {
         super.setUp()
@@ -14,7 +17,6 @@ final class LocalStudioUITests: XCTestCase {
 
     func testComposerConversationAndNewChat() {
         capture("01-empty")
-        let composer = app.textFields["composer"]
         composer.tap()
         composer.typeText("Short text")
         capture("02-short-composer")
@@ -26,7 +28,7 @@ final class LocalStudioUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Edit"].waitForExistence(timeout: 3))
         capture("04-context-menu")
         app.buttons["Edit"].tap()
-        XCTAssertEqual(app.textFields["composer"].value as? String, "Short text")
+        XCTAssertEqual(composer.value as? String, "Short text")
         app.buttons["sendPrompt"].tap()
         XCTAssertTrue(app.buttons["newChat"].waitForExistence(timeout: 3))
         app.buttons["newChat"].tap()
@@ -35,8 +37,8 @@ final class LocalStudioUITests: XCTestCase {
     }
 
     func testMultilineGenerationAndCancellation() {
-        app.textFields["composer"].tap()
-        app.textFields["composer"].typeText("Generate an image of a pond with various animals residing in it")
+        composer.tap()
+        composer.typeText("Generate an image of a pond with various animals residing in it")
         capture("05-long-composer")
         app.buttons["sendPrompt"].tap()
         XCTAssertTrue(app.otherElements["generation"].waitForExistence(timeout: 5))
@@ -54,6 +56,16 @@ final class LocalStudioUITests: XCTestCase {
         // PHPicker runs in a system service; assert a presented sheet rather than private hierarchy details.
         XCTAssertTrue(app.navigationBars.firstMatch.waitForExistence(timeout: 5) || app.buttons["Cancel"].waitForExistence(timeout: 5))
         capture("08-photo-picker")
+    }
+
+    func testReferenceScenes() {
+        for scene in ["empty", "short", "long", "attachments", "attachments-long", "conversation", "generation"] {
+            app.terminate()
+            app.launchEnvironment["LOCAL_STUDIO_PREVIEW"] = scene
+            app.launch()
+            XCTAssertTrue(app.buttons["addPhotos"].waitForExistence(timeout: 5))
+            capture("reference-\(scene)")
+        }
     }
 
     private func capture(_ name: String) {

@@ -5,6 +5,7 @@ struct ChatView: View {
     @State private var atBottom = true
     @State private var scrollPosition = ScrollPosition(edge: .bottom)
     @State private var width: CGFloat = 430
+    @State private var viewportHeight: CGFloat = 839
     @State private var workSelected = false
     @State private var selectedText: String?
     @FocusState private var composerFocused: Bool
@@ -25,7 +26,10 @@ struct ChatView: View {
                                 session.edit(message)
                                 composerFocused = true
                             }, selectText: { selectedText = message.text })
-                            .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
+                            .transition(.asymmetric(
+                                insertion: message.role == .user && !reduceMotion
+                                    ? .offset(y: max(0, viewportHeight - 116)).combined(with: .opacity) : .opacity,
+                                removal: .opacity))
                         }
                         if session.isGenerating {
                             GenerationView(startedAt: session.generationStarted)
@@ -85,12 +89,24 @@ struct ChatView: View {
                     }
                     .overlay {
                         if session.messages.isEmpty {
-                            Picker("Studio", selection: $workSelected) {
-                                Text("Chat").tag(false)
-                                Text("Work").tag(true)
+                            HStack(spacing: 0) {
+                                Button { workSelected = false } label: {
+                                    Text("Chat")
+                                        .frame(width: 71, height: 40)
+                                        .background(workSelected ? Color.clear : Color(white: 0.04), in: .capsule)
+                                }
+                                .accessibilityAddTraits(workSelected ? [] : .isSelected)
+                                Button { workSelected = true } label: {
+                                    Text("Work")
+                                        .frame(width: 71, height: 40)
+                                        .background(workSelected ? Color(white: 0.04) : Color.clear, in: .capsule)
+                                }
+                                .accessibilityAddTraits(workSelected ? .isSelected : [])
                             }
-                            .pickerStyle(.segmented)
-                            .frame(width: 158, height: 44)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.white)
+                            .padding(4)
+                            .frame(width: 158, height: 48)
                             .glassEffect(.regular, in: .capsule)
                         }
                     }
@@ -102,7 +118,7 @@ struct ChatView: View {
                     }
                 }
                 .padding(.horizontal, 20)
-                .padding(.top, 2)
+                .padding(.top, 0)
                 .padding(.bottom, 0)
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -120,6 +136,7 @@ struct ChatView: View {
                         .accessibilityLabel("Scroll to bottom")
                     }
                     ComposerView(session: session, availableWidth: width, focused: $composerFocused) {
+                        workSelected = false
                         composerFocused = false
                         session.send()
                         withAnimation(reduceMotion ? nil : .spring(response: 0.44, dampingFraction: 0.86)) {
@@ -127,9 +144,12 @@ struct ChatView: View {
                         }
                     }
                 }
-                .padding(.bottom, 8)
+                .padding(.bottom, 0)
             }
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+            .onGeometryChange(for: CGSize.self) { $0.size } action: {
+                width = $0.width
+                viewportHeight = $0.height
+            }
             .onChange(of: session.messages.count) {
                 if atBottom { withAnimation(reduceMotion ? nil : .smooth) { scrollPosition.scrollTo(edge: .bottom) } }
             }

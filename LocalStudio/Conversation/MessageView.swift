@@ -5,7 +5,7 @@ struct MessageView: View {
     let message: ChatMessage
     let edit: () -> Void
     let selectText: () -> Void
-    @State private var speech = AVSpeechSynthesizer()
+    @State private var speech: AVSpeechSynthesizer?
 
     var body: some View {
         VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 8) {
@@ -81,8 +81,11 @@ struct MessageView: View {
                         Button { UIPasteboard.general.string = message.text } label: { Image(systemName: "square.on.square") }
                             .accessibilityLabel("Copy response")
                         Button {
-                            if speech.isSpeaking { speech.stopSpeaking(at: .immediate) }
-                            else { speech.speak(AVSpeechUtterance(string: message.text)) }
+                            if speech?.isSpeaking == true { speech?.stopSpeaking(at: .immediate) }
+                            else {
+                                if speech == nil { speech = AVSpeechSynthesizer() }
+                                speech?.speak(AVSpeechUtterance(string: message.text))
+                            }
                         } label: { Image(systemName: "speaker.wave.2") }
                             .accessibilityLabel("Read aloud")
                         ShareLink(item: message.text) { Image(systemName: "square.and.arrow.up") }
@@ -108,6 +111,6 @@ struct MessageView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: message.role == .user ? .trailing : .leading)
-        .onDisappear { speech.stopSpeaking(at: .immediate) }
+        .onDisappear { speech?.stopSpeaking(at: .immediate) }
     }
 }
