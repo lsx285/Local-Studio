@@ -15,7 +15,7 @@ struct GenerationView: View {
     }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: reduceMotion ? 1 : 1 / 30, paused: referenceTime != nil)) { timeline in
+        TimelineView(.animation(minimumInterval: reduceMotion ? 1 : 1 / 60, paused: referenceTime != nil)) { timeline in
             let elapsed = referenceTime ?? max(0, timeline.date.timeIntervalSince(startedAt))
             let progress = GenerationMotion.progress(at: elapsed)
             Group {
@@ -74,7 +74,7 @@ struct GenerationView: View {
     }
 }
 
-/// Four bytes per dot: radius in 1/64 pt and sRGB, interpolated by Canvas at 30 fps.
+/// Four bytes per dot: radius in 1/64 pt and sRGB, interpolated by Canvas at 60 fps.
 /// Only this abstract motion trace is bundled; the recording never enters the app.
 private enum GenerationMotion {
     static let samples: [UInt8] = {
