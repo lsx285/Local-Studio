@@ -18,6 +18,10 @@ struct ChatView: View {
     @State private var selectionRevision = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    private var showsScrollButton: Bool {
+        !composerFullScreen && !endVisible && !followsBottom && bottomDistance > 24 && !session.messages.isEmpty
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
             Color.black.ignoresSafeArea()
@@ -46,6 +50,8 @@ struct ChatView: View {
                 .padding(.top, 24)
                 .padding(.bottom, 14)
             }
+            // Continue drawing artwork beneath the safe-area composer so Liquid Glass samples it.
+            .scrollClipDisabled()
             .scrollPosition($scrollPosition)
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .scrollDismissesKeyboard(.interactively)
@@ -136,7 +142,7 @@ struct ChatView: View {
                     }
                 }
                 .overlay(alignment: .top) {
-                    if !composerFullScreen && !endVisible && !followsBottom && bottomDistance > 24 && !session.messages.isEmpty {
+                    if showsScrollButton {
                         Button {
                             followsBottom = true
                             isUserScrolling = false
@@ -156,9 +162,12 @@ struct ChatView: View {
                         .glassEffect(.regular.interactive(), in: .circle)
                         .accessibilityLabel("Scroll to bottom")
                         .accessibilityIdentifier("scrollToBottom")
+                        .transition(reduceMotion ? .opacity : .scale(scale: 0.55)
+                            .combined(with: .opacity).combined(with: .offset(y: 8)))
                         .offset(y: -50)
                     }
                 }
+                .animation(reduceMotion ? .linear(duration: 0.12) : .spring(response: 0.28, dampingFraction: 0.88), value: showsScrollButton)
                 .padding(.bottom, keyboardVisible && !composerFullScreen ? 12 : 0)
             }
             .onGeometryChange(for: CGSize.self) { $0.size } action: {

@@ -25,13 +25,10 @@ struct ComposerEditor: UIViewRepresentable {
         view.keyboardDismissMode = .interactive
         view.accessibilityIdentifier = "composer"
         view.accessibilityLabel = "Ask Local Studio"
-        for direction in [UISwipeGestureRecognizer.Direction.up, .down] {
-            let swipe = UISwipeGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.swiped(_:)))
-            swipe.direction = direction
-            swipe.cancelsTouchesInView = false
-            swipe.delegate = context.coordinator
-            view.addGestureRecognizer(swipe)
-        }
+        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.panned(_:)))
+        pan.cancelsTouchesInView = false
+        pan.delegate = context.coordinator
+        view.addGestureRecognizer(pan)
         return view
     }
 
@@ -80,11 +77,22 @@ struct ComposerEditor: UIViewRepresentable {
         func textViewDidBeginEditing(_ textView: UITextView) { if !parent.focused { parent.focused = true } }
         func textViewDidEndEditing(_ textView: UITextView) { if parent.focused { parent.focused = false } }
 
-        @objc func swiped(_ gesture: UISwipeGestureRecognizer) {
-            guard let view = gesture.view as? UITextView, view.selectedRange.length == 0 else { return }
-            let show = gesture.direction == .up
-            parent.focused = show
+        @objc func panned(_ gesture: UIPanGestureRecognizer) {
+            guard gesture.state == .changed,
+                  let view = gesture.view as? UITextView, view.selectedRange.length == 0 else { return }
+            let delta = gesture.translation(in: view)
+            guard abs(delta.y) >= 12, abs(delta.y) > abs(delta.x) * 1.25 else { return }
+            let show = delta.y < 0
+            if parent.focused != show { parent.focused = show }
             if show { view.becomeFirstResponder() } else { view.resignFirstResponder() }
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let pan = gestureRecognizer as? UIPanGestureRecognizer,
+                  let view = pan.view as? UITextView, view.selectedRange.length == 0 else { return false }
+            let velocity = pan.velocity(in: view)
+            // Upward pans in an active long draft remain native text scrolling.
+            return abs(velocity.y) > abs(velocity.x) * 1.25 && (!view.isFirstResponder || velocity.y > 0)
         }
 
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,

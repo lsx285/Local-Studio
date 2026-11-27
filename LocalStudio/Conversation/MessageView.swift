@@ -16,26 +16,7 @@ struct MessageView: View {
         VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 8) {
             if !message.attachments.isEmpty {
                 if message.role == .user {
-                    HStack {
-                        Spacer(minLength: 90)
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: message.attachments.count == 1 ? 1 : 2), spacing: 5) {
-                            ForEach(message.attachments) { photo in
-                                Image(uiImage: photo.image)
-                                    .resizable().aspectRatio(contentMode: .fill)
-                                    .frame(maxWidth: .infinity)
-                                    .aspectRatio(message.attachments.count == 1 ? 1.5 : 1, contentMode: .fit)
-                                    .clipped()
-                                    .clipShape(.rect(cornerRadius: 24))
-                                    .accessibilityLabel("Attached photo")
-                                    .accessibilityIdentifier("userAttachment")
-                                    .contextMenu {
-                                        Button("Copy", systemImage: "square.on.square") { UIPasteboard.general.image = photo.image }
-                                    }
-                                    .tint(.white)
-                            }
-                        }
-                        .frame(maxWidth: 288)
-                    }
+                    SentPhotoAttachments(photos: message.attachments)
                 } else {
                     ForEach(message.attachments) { photo in
                         Image(uiImage: photo.image)
@@ -166,5 +147,51 @@ struct MessageView: View {
         .alert("Couldn’t save photo", isPresented: Binding(get: { photoError != nil }, set: { if !$0 { photoError = nil } })) {
             Button("OK") { photoError = nil }
         } message: { Text(photoError ?? "") }
+    }
+}
+
+/// Sent images use their natural ratio singly, and compact square tiles in a group.
+private struct SentPhotoAttachments: View {
+    let photos: [PhotoAttachment]
+    @State private var availableWidth: CGFloat = 398
+
+    private var columns: Int { photos.count == 4 ? 2 : min(3, photos.count) }
+    private var tileSize: CGFloat { min(128, max(1, (availableWidth - CGFloat(columns - 1) * 4) / CGFloat(columns))) }
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            if photos.count == 1, let photo = photos.first {
+                let size = fittedSize(photo.image.size)
+                thumbnail(photo, size: size)
+            } else {
+                ForEach(Array(stride(from: 0, to: photos.count, by: columns)), id: \.self) { start in
+                    HStack(spacing: 4) {
+                        ForEach(Array(photos[start..<min(start + columns, photos.count)])) { photo in
+                            thumbnail(photo, size: CGSize(width: tileSize, height: tileSize))
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { availableWidth = $0 }
+    }
+
+    private func fittedSize(_ size: CGSize) -> CGSize {
+        let scale = min(min(288, availableWidth) / max(1, size.width), 192 / max(1, size.height))
+        return CGSize(width: size.width * scale, height: size.height * scale)
+    }
+
+    private func thumbnail(_ photo: PhotoAttachment, size: CGSize) -> some View {
+        Image(uiImage: photo.image)
+            .resizable().scaledToFill()
+            .frame(width: size.width, height: size.height)
+            .clipShape(.rect(cornerRadius: 24))
+            .accessibilityLabel("Attached photo")
+            .accessibilityIdentifier("userAttachment")
+            .contextMenu {
+                Button("Copy", systemImage: "square.on.square") { UIPasteboard.general.image = photo.image }
+            }
+            .tint(.white)
     }
 }

@@ -15,6 +15,18 @@ struct ComposerView: View {
     @State private var selection: [PhotosPickerItem] = []
     @State private var loadingPhotos = false
     @State private var photoError = false
+    @State private var galleryDrag: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var railAnimation: Animation? { reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.86) }
+
+    private func dismissGallery() {
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.24)) {
+            pickerPresented = false
+            galleryDrag = 0
+        }
+        pendingSelection = []
+    }
 
     private var expanded: Bool {
         fullScreen || session.draft.contains("\n") || (session.draft as NSString).size(withAttributes: [.font: UIFont.systemFont(ofSize: 17)]).width > availableWidth - sideInset * 2 - 100
@@ -46,14 +58,17 @@ struct ComposerView: View {
                                 .frame(width: 120, height: 120)
                                 .clipShape(.rect(cornerRadius: 20))
                                 .overlay(alignment: .topTrailing) {
-                                    Button { session.attachments.removeAll { $0.id == attachment.id } } label: {
-                                        Image(systemName: "xmark").font(.system(size: 15, weight: .bold))
-                                            .frame(width: 23, height: 23)
+                                    Button {
+                                        withAnimation(railAnimation) { session.attachments.removeAll { $0.id == attachment.id } }
+                                    } label: {
+                                        Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
+                                            .frame(width: 22, height: 22)
                                             .background(.black.opacity(0.5), in: .circle)
                                     }
                                     .accessibilityLabel("Remove attachment")
                                     .padding(8)
                                 }
+                                .transition(.opacity.combined(with: .scale(scale: 0.92)))
                         }
                     }
                     .padding(8)
@@ -113,7 +128,9 @@ struct ComposerView: View {
                         .frame(width: 32, height: 32)
                     }
                     .disabled(!session.isGenerating && !session.canSend)
-                    .opacity(session.isGenerating || session.canSend ? 1 : 0.5)
+                    .opacity(session.isGenerating || session.canSend ? 1 : 0)
+                    .allowsHitTesting(session.isGenerating || session.canSend)
+                    .accessibilityHidden(!session.isGenerating && !session.canSend)
                     .accessibilityLabel(session.isGenerating ? "Stop generation" : "Send prompt")
                     .accessibilityIdentifier("sendPrompt")
                 }
@@ -166,8 +183,8 @@ struct ComposerView: View {
             }
         }
         .padding(.horizontal, fullScreen ? 0 : expanded || focused ? 12 : 34)
-        .simultaneousGesture(DragGesture(minimumDistance: 18).onEnded { value in
-            guard !expanded || !focused,
+        .simultaneousGesture(DragGesture(minimumDistance: 12).onChanged { value in
+            guard !pickerPresented,
                   abs(value.translation.height) > abs(value.translation.width) * 1.25 else { return }
             focused = value.translation.height < 0
         })
@@ -187,8 +204,7 @@ struct ComposerView: View {
                     .overlay(alignment: .bottom) {
                         HStack {
                             Button {
-                                withAnimation { pickerPresented = false }
-                                pendingSelection = []
+                                dismissGallery()
                             } label: {
                                 Image(systemName: "chevron.left")
                                     .font(.system(size: 23, weight: .medium))
@@ -211,7 +227,7 @@ struct ComposerView: View {
                                     .padding(.horizontal, 22)
                                     .frame(height: 44)
                             }
-                            .glassEffect((pendingSelection.isEmpty ? Glass.clear : Glass.regular.tint(StudioPalette.accent)).interactive(), in: .capsule)
+                            .glassEffect((pendingSelection.isEmpty ? Glass.clear : Glass.clear.tint(Color(red: 0.02, green: 0.19, blue: 0.96))).interactive(), in: .capsule)
                             .accessibilityIdentifier("confirmPhotos")
                         }
                         .foregroundStyle(.white)
@@ -219,7 +235,20 @@ struct ComposerView: View {
                         .padding(.bottom, 24)
                     }
                     .padding(.horizontal, 12)
-                    .offset(y: 22)
+                    .offset(y: 22 + galleryDrag)
+                    .simultaneousGesture(DragGesture(minimumDistance: 12)
+                        .onChanged { value in
+                            guard value.translation.height > 0,
+                                  value.translation.height > abs(value.translation.width) * 1.25 else { return }
+                            galleryDrag = value.translation.height
+                        }
+                        .onEnded { value in
+                            if galleryDrag > 44 || (galleryDrag > 12 && value.predictedEndTranslation.height > 100) {
+                                dismissGallery()
+                            } else {
+                                withAnimation(railAnimation) { galleryDrag = 0 }
+                            }
+                        })
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }

@@ -23,7 +23,8 @@ struct GenerationView: View {
             Group {
                 if elapsed < 2.8 {
                     Circle().fill(StudioPalette.accent)
-                        .frame(width: 7, height: 7)
+                        .frame(width: 17, height: 17)
+                        .scaleEffect(reduceMotion ? 1 : 0.6 + 0.4 * (0.5 + 0.5 * cos(elapsed * 2 * .pi / 1.1)))
                         .frame(width: 300, alignment: .leading)
                 } else {
                     VStack(alignment: .leading, spacing: 8) {

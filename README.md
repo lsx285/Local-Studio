@@ -12,7 +12,7 @@ The composer keeps one native text editor while changing layouts, preserving foc
 
 ## Build and download
 
-All compilation and simulator testing happen in [GitHub Actions](../../actions). Push to `main`, open a pull request, or run the workflow manually.
+All compilation happens in [GitHub Actions](../../actions). Push to `main`, open a pull request, or run the workflow manually. Visual review is manual; CI does not run simulator tests.
 
 - Runner: `xcode-27` (Apple silicon); stable Xcode **27.2**, iOS **27.2 SDK**, Swift **6** language mode; minimum iOS 27.0.
 - Checkout **7.0.1** and upload-artifact **7.0.2**, pinned to their release commits.
