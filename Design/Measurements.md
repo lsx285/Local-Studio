@@ -45,3 +45,22 @@ Single sent photos fit their natural aspect ratio within 288 × 192 pt. Multiple
 The conversation disables scroll clipping so content continues beneath the safe-area composer, providing a live backdrop for its regular Liquid Glass. The gallery confirmation capsule uses clear interactive glass with a saturated blue tint, avoiding the pale regular-glass treatment. Gallery downward drags track the finger and dismiss after 44 pt, or a shorter drag with sufficient projected travel. Composer keyboard gestures use a 12 pt directional pan threshold instead of requiring a fast swipe; upward scrolling in an active long editor stays native.
 
 The 9.39-second scroll-button recording shows a scale/fade with a slight upward settling motion. The 36 pt control transitions from 55% scale and 8 pt below its resting position using a 0.28-second spring with 0.88 damping; Reduce Motion uses a short fade. The initial generation dot has a 17 pt maximum diameter and smoothly pulses between 60% and 100% over 1.1 seconds, with a stable center. Reduce Motion holds it at full size. Timing and glass appearance remain subject to manual review of the IPA.
+
+
+## Replacement reference: 10:28 PM recording
+
+All 1,049 frames of the 720 × 1562, 59 fps, 17.78-second recording were decoded for analysis. This supersedes the previous 25-second reference timeline above. The new resource stores 883 frames at 59 Hz from 1.85 seconds onward: 660 radius/sRGB tuples plus 64 horizontal luminance samples per frame. No screenshots, text rasterization, or final artwork from the new recording are bundled. The measured label luminance drives the gradient directly, preserving the recorded sweep direction and pauses rather than reversing a repeating gradient. Stage boundaries are approximately 6.45, 10.95, and 14.95 seconds. This reference finishes during “Polishing details”; it does not show “Finishing up”.
+
+| Time in recording | Observed behavior |
+|---|---|
+| 0–1.85 s | Prompt settles, initial blue dot |
+| 1.85–6.45 s | Sketching it out, early percentage jump then slower increments |
+| 6.45–10.95 s | Making the first draft |
+| 10.95–14.95 s | Setting the scene |
+| 14.95–16.6 s | Polishing details, percentage reaches 92 |
+| 16.6–17.05 s | Label/badge disappear; dot field contracts vertically and widens |
+| 17.05–17.55 s | Image-colored particles elongate into vertical strips and join into the final image |
+
+The reveal uses the bundled demo artwork with a moving particle/strip mask, replacing the previous stretched-dot fade followed by a separate image crossfade. Its geometry and stagger timing are fitted to the recording; visual equivalence still requires simulator/device comparison. The final artwork content remains the existing demo fixture. The focused simulator check captures nine fixed timeline phases, including contraction and strip reveal; it does not assert pixel identity. No other UI checks are selected by the workflow.
+
+User-text long presses now trigger medium impact feedback and spring-present the enlarged bubble/menu. The checked temporary-chat icon keeps the same white broken-ring bubble and adds a rounded 2.3 pt checkmark, through (8,12), (11,15), (16,8) inside the 23 pt glyph. Temporary-mode explanatory content remains hidden as previously requested.

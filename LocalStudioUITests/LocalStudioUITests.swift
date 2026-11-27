@@ -86,7 +86,7 @@ final class LocalStudioUITests: XCTestCase {
     }
 
     func testGenerationReferencePhases() {
-        for offset in ["3", "8", "8.5", "18", "18.5", "22"] {
+        for offset in ["2", "3", "6.5", "11.5", "16.4", "16.8", "17.1", "17.3", "17.5"] {
             app.terminate()
             app.launchEnvironment["LOCAL_STUDIO_PREVIEW"] = "generation"
             app.launchEnvironment["LOCAL_STUDIO_GENERATION_OFFSET"] = offset
@@ -94,6 +94,18 @@ final class LocalStudioUITests: XCTestCase {
             XCTAssertTrue(app.otherElements["generation"].waitForExistence(timeout: 5))
             capture("reference-generation-\(offset)")
         }
+        app.terminate()
+        app.launchEnvironment["LOCAL_STUDIO_PREVIEW"] = "empty"
+        app.launchEnvironment.removeValue(forKey: "LOCAL_STUDIO_GENERATION_OFFSET")
+        app.launch()
+        composer.tap()
+        composer.typeText("Generate a pond full of ducks each unique")
+        app.buttons["sendPrompt"].tap()
+        XCTAssertTrue(app.otherElements["generation"].waitForExistence(timeout: 3))
+        let artwork = app.descendants(matching: .any).matching(identifier: "assistantArtwork").firstMatch
+        XCTAssertTrue(artwork.waitForExistence(timeout: 22))
+        XCTAssertFalse(app.otherElements["generation"].exists)
+        capture("reference-generation-completed")
     }
 
     func testKeyboardSpacingAndContinuousMultilineFocus() {

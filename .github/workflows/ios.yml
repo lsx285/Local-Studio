@@ -48,3 +48,24 @@ jobs:
           archive: false
           if-no-files-found: error
           retention-days: 14
+
+  generation-review:
+    name: Artwork generation only
+    runs-on: xcode-27
+    timeout-minutes: 15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check measured generation phases and reveal
+        run: |
+          set -euo pipefail
+          DEVICE=$(xcrun simctl create GenerationReview com.apple.CoreSimulator.SimDeviceType.iPhone-15-Pro-Max com.apple.CoreSimulator.SimRuntime.iOS-27-2)
+          trap 'xcrun simctl delete "$DEVICE"' EXIT
+          xcrun simctl boot "$DEVICE"
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcodebuild -project LocalStudio.xcodeproj -scheme LocalStudio \
+            -configuration Debug -destination "platform=iOS Simulator,id=$DEVICE" \
+            -derivedDataPath build/generation -resultBundlePath build/GenerationReview.xcresult \
+            -only-testing:LocalStudioUITests/LocalStudioUITests/testGenerationReferencePhases \
+            -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test

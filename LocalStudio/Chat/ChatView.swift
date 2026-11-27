@@ -29,7 +29,10 @@ struct ChatView: View {
                 LazyVStack(alignment: .leading, spacing: 32) {
                     ForEach(session.messages) { message in
                         MessageView(message: message, showPromptMenu: { message, frame in
-                            promptMenu = PresentedPromptMenu(message: message, frame: frame)
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            withAnimation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.86)) {
+                                promptMenu = PresentedPromptMenu(message: message, frame: frame)
+                            }
                         }, selectionRequest: selectedMessageID == message.id ? selectionRevision : 0)
                         .transition(.asymmetric(
                             insertion: message.role == .user && !reduceMotion
@@ -37,7 +40,7 @@ struct ChatView: View {
                             removal: .opacity))
                     }
                     if session.isGenerating {
-                        GenerationView(startedAt: session.generationStarted)
+                        GenerationView(startedAt: session.generationStarted, availableWidth: width - 32)
                             .accessibilityIdentifier("generation")
                     }
                     Color.clear.frame(height: 1).id("bottom")
@@ -93,9 +96,20 @@ struct ChatView: View {
                                 }
                                     .stroke(style: StrokeStyle(lineWidth: 2.3, lineCap: .round, lineJoin: .round))
                                     .frame(width: 23, height: 23)
+                                    .overlay {
+                                        if session.isTemporary {
+                                            Path { path in
+                                                path.move(to: CGPoint(x: 8, y: 12))
+                                                path.addLine(to: CGPoint(x: 11, y: 15))
+                                                path.addLine(to: CGPoint(x: 16, y: 8))
+                                            }
+                                            .stroke(style: StrokeStyle(lineWidth: 2.3, lineCap: .round, lineJoin: .round))
+                                            .frame(width: 23, height: 23)
+                                        }
+                                    }
                                     .frame(width: 44, height: 44)
                             }
-                            .foregroundStyle(session.isTemporary ? StudioPalette.accent : .white)
+                            .foregroundStyle(.white)
                             .glassEffect(.regular.interactive(), in: .circle)
                             .accessibilityLabel("Temporary chat")
                             .accessibilityValue(session.isTemporary ? "On" : "Off")
@@ -198,6 +212,7 @@ struct ChatView: View {
                             .frame(width: presented.frame.width, height: presented.frame.height)
                             .background(StudioPalette.bubble, in: .rect(cornerRadius: 24))
                             .scaleEffect(1.15, anchor: .trailing)
+                            .transition(.scale(scale: 1 / 1.15, anchor: .trailing).combined(with: .opacity))
                             .position(x: anchor.midX, y: anchor.midY)
                             .allowsHitTesting(false)
                         PromptContextMenu(message: presented.message) { action in

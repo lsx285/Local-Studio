@@ -45,7 +45,7 @@ final class ChatSession {
                 messages.append(ChatMessage(role: .assistant, text: "Reply \(index). " + String(repeating: "This is a local conversation preview. ", count: 6)))
             }
         case "generation":
-            messages = [ChatMessage(role: .user, text: "Generate an image of a pond with various animals residing in it")]
+            messages = [ChatMessage(role: .user, text: "Generate a pond full of ducks each unique")]
             let offset = Double(ProcessInfo.processInfo.environment["LOCAL_STUDIO_GENERATION_OFFSET"] ?? "10") ?? 10
             generationStarted = .now.addingTimeInterval(-offset)
             isGenerating = true
@@ -106,7 +106,7 @@ final class ChatSession {
         let imageRequest = ["image", "draw", "generate", "background", "edit"].contains { prompt.localizedCaseInsensitiveContains($0) }
         generationTask = Task { [weak self] in
             do {
-                try await Task.sleep(for: .seconds(imageRequest ? 24 : 0.8))
+                try await Task.sleep(for: .seconds(imageRequest ? 17.55 : 0.8))
                 guard let self else { return }
                 var resultPhotos: [PhotoAttachment] = []
                 let response: String
@@ -123,7 +123,7 @@ final class ChatSession {
                 } else {
                     response = "Local Studio is ready. Connect your local models in a future update to chat, create images, and make edits."
                 }
-                withAnimation(.easeOut(duration: 0.35)) {
+                withAnimation(imageRequest ? nil : .easeOut(duration: 0.35)) {
                     self.isGenerating = false
                     self.messages.append(ChatMessage(role: .assistant, text: response, attachments: resultPhotos))
                 }

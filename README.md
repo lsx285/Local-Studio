@@ -8,17 +8,17 @@ Normal conversations stay on the iPhone using an atomically written, file-protec
 
 The composer keeps one native text editor while changing layouts, preserving focus, cursor position, and text. It expands to 406 pt on the 430 pt reference screen with the keyboard open and sits 12 pt above it. Swipe up on the composer to show the keyboard and down to dismiss it. Short text and its placeholder do not scroll; long drafts scroll after seven 24 pt lines. Longer drafts expose the corner expand control; expanding fills the area above the keyboard, and collapsing restores the compact layout with the same draft and cursor. The scroll-to-bottom control floats above the composer without resizing the conversation. Scroll distance and visibility of the actual final row hide it when you manually reach the bottom. Incoming results do not pull you away from older messages.
 
-**Frontend preview:** text replies and the 24-second generation sequence are simulated. Image requests show a bundled duck fixture cropped from the supplied reference. No image is actually generated or edited. The generation field renders 660 vector dots using a compact trace of measured radii and colors from the reference recording, interpolated at 60 fps. Personal screenshots, video frames, and audio are not published.
+**Frontend preview:** text replies and the 17.55-second generation sequence are simulated. Image requests show a bundled duck fixture cropped from the supplied reference. No image is actually generated or edited. The generation field renders 660 vector dots using 883 measured frames of radii and colors sampled at 59 fps, plus per-frame label luminance profiles. Personal screenshots, video frames, and audio are not published.
 
 ## Build and download
 
-All compilation happens in [GitHub Actions](../../actions). Push to `main`, open a pull request, or run the workflow manually. Visual review is manual; CI does not run simulator tests.
+All compilation happens in [GitHub Actions](../../actions). Push to `main`, open a pull request, or run the workflow manually. Visual review is manual; CI runs only the focused artwork-generation phase check.
 
 - Runner: `xcode-27` (Apple silicon); stable Xcode **27.2**, iOS **27.2 SDK**, Swift **6** language mode; minimum iOS 27.0.
 - Checkout **7.0.1** and upload-artifact **7.0.2**, pinned to their release commits.
 - Download **LocalStudio.ipa** directly from the run's artifact list. `archive: false` prevents a ZIP wrapper. The only uploaded artifact is the IPA.
 - The IPA contains an unsigned `Payload/LocalStudio.app`; installation on an iPhone requires signing through your chosen installation tool.
-- The workflow builds and validates the unsigned device app and uploads only `LocalStudio.ipa`. It does not boot a simulator, run UI tests, or export screenshots. UI test source remains available for future manual use.
+- The workflow builds and validates the unsigned device app and uploads only `LocalStudio.ipa`. A separate job runs only the artwork-generation phase check in the simulator, including the final reveal. Other UI tests are excluded. The only downloadable artifact remains the IPA.
 
 Open `LocalStudio.xcodeproj` to browse the project. Build settings and shared scheme are checked in; no project generator, package manager, or signing secret is required.
 
