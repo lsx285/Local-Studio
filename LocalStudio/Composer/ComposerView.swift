@@ -41,6 +41,7 @@ struct ComposerView: View {
             return
         }
         changingFullscreen = true
+        focused = true
         let closing = fullScreen
         let travel = min(650, availableHeight)
         fullscreenTransition = Task { @MainActor in
@@ -56,12 +57,8 @@ struct ComposerView: View {
                     setFullscreenLayout(false, offset: 0)
                     focused = true
                 } else {
-                    // Preserve the editor/selection while reproducing the short keyboard dip.
-                    focused = false
-                    try await Task.sleep(for: .seconds(0.16))
-                    try Task.checkCancellation()
+                    // Presentation changes only the panel; keep the current keyboard/responder.
                     setFullscreenLayout(true, offset: travel)
-                    focused = true
                     // Commit the offscreen layout before starting its presentation transform.
                     try await Task.sleep(for: .milliseconds(17))
                     try Task.checkCancellation()
