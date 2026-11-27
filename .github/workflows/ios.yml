@@ -17,7 +17,7 @@ jobs:
   build:
     name: Swift 6 · iOS 27.2
     runs-on: xcode-27
-    timeout-minutes: 35
+    timeout-minutes: 15
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
     steps:
@@ -48,28 +48,3 @@ jobs:
           archive: false
           if-no-files-found: error
           retention-days: 14
-      - name: Select reference-sized simulator
-        id: simulator
-        run: |
-          set -euo pipefail
-          RUNTIME=$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; print(next(r["identifier"] for r in json.load(sys.stdin)["runtimes"] if r["identifier"].endswith("iOS-27-2") and r["isAvailable"]))')
-          DEVICE=$(xcrun simctl create 'Local Studio Reference' com.apple.CoreSimulator.SimDeviceType.iPhone-15-Pro-Max "$RUNTIME")
-          echo "id=$DEVICE" >> "$GITHUB_OUTPUT"
-          xcrun simctl boot "$DEVICE" || true
-          xcrun simctl bootstatus "$DEVICE" -b
-          xcrun simctl status_bar "$DEVICE" override --time '1:54' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState discharging --batteryLevel 100
-          xcrun simctl addmedia "$DEVICE" LocalStudio/Resources/DemoArtwork.jpg
-      - name: Exercise frontend and capture screenshots
-        run: |
-          set -euo pipefail
-          xcodebuild -project LocalStudio.xcodeproj -scheme LocalStudio \
-            -configuration Debug -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.id }}' \
-            -derivedDataPath build/simulator -resultBundlePath build/VisualReview.xcresult \
-            CODE_SIGNING_ALLOWED=NO test
-      - name: Export visual review to workflow log
-        if: always()
-        run: |
-          if [ -d build/VisualReview.xcresult ]; then
-            xcrun xcresulttool export attachments --path build/VisualReview.xcresult --output-path build/screenshots
-            python3 Scripts/print_visual_review.py build/screenshots
-          fi

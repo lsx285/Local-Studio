@@ -7,6 +7,8 @@ struct ComposerEditor: UIViewRepresentable {
     @Binding var focused: Bool
     let expanded: Bool
     let overflowing: Bool
+    let fullScreen: Bool
+    let showsExpansionControl: Bool
 
     func makeUIView(context: Context) -> ComposerNativeTextView {
         let view = ComposerNativeTextView(frame: .zero, textContainer: nil)
@@ -35,13 +37,21 @@ struct ComposerEditor: UIViewRepresentable {
 
     func updateUIView(_ view: ComposerNativeTextView, context: Context) {
         context.coordinator.parent = self
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.minimumLineHeight = 24
+        paragraph.maximumLineHeight = 24
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: 17), .foregroundColor: UIColor.white, .paragraphStyle: paragraph
+        ]
         if view.text != text {
-            view.text = text
+            view.attributedText = NSAttributedString(string: text, attributes: attributes)
             view.selectedRange = NSRange(location: (text as NSString).length, length: 0)
         }
-        view.textContainerInset = expanded ? .zero : UIEdgeInsets(top: 6, left: 0, bottom: 6, right: 0)
-        view.isScrollEnabled = overflowing
-        if !overflowing { view.setContentOffset(.zero, animated: false) }
+        view.typingAttributes = attributes
+        view.textContainerInset = expanded ? .zero : UIEdgeInsets(top: 4, left: 0, bottom: 4, right: 0)
+        view.isScrollEnabled = overflowing || fullScreen
+        if !view.isScrollEnabled { view.setContentOffset(.zero, animated: false) }
+        view.reserveExpansionControl(showsExpansionControl && !fullScreen, width: view.bounds.width)
         view.setNeedsLayout()
         if focused && !view.isFirstResponder && view.window != nil { view.becomeFirstResponder() }
         if !focused && view.isFirstResponder { view.resignFirstResponder() }
@@ -49,9 +59,10 @@ struct ComposerEditor: UIViewRepresentable {
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: ComposerNativeTextView, context: Context) -> CGSize? {
         guard let width = proposal.width else { return nil }
-        let lineHeight = UIFont.systemFont(ofSize: 17).lineHeight
+        if fullScreen { return CGSize(width: width, height: proposal.height ?? 240) }
+        uiView.reserveExpansionControl(showsExpansionControl, width: width)
         let measured = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
-        let height = expanded ? min(lineHeight * 6, max(lineHeight * 2, measured)) : 32
+        let height = expanded ? min(168, max(48, measured)) : 32
         return CGSize(width: width, height: ceil(height))
     }
 
@@ -83,6 +94,15 @@ struct ComposerEditor: UIViewRepresentable {
 
 final class ComposerNativeTextView: UITextView {
     private let placeholder = UILabel()
+    private var exclusionWidth: CGFloat?
+
+    func reserveExpansionControl(_ reserve: Bool, width: CGFloat) {
+        let target: CGFloat? = reserve ? width : nil
+        guard target != exclusionWidth else { return }
+        exclusionWidth = target
+        textContainer.exclusionPaths = reserve
+            ? [UIBezierPath(rect: CGRect(x: max(0, width - 32), y: 0, width: 32, height: 24))] : []
+    }
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         super.init(frame: frame, textContainer: textContainer)
@@ -99,7 +119,7 @@ final class ComposerNativeTextView: UITextView {
     override func layoutSubviews() {
         super.layoutSubviews()
         placeholder.isHidden = !(text ?? "").isEmpty
-        placeholder.frame = CGRect(x: 0, y: textContainerInset.top,
+        placeholder.frame = CGRect(x: 0, y: textContainerInset.top + (24 - UIFont.systemFont(ofSize: 17).lineHeight) / 2,
                                    width: bounds.width, height: UIFont.systemFont(ofSize: 17).lineHeight)
         if !isScrollEnabled && contentOffset != .zero { setContentOffset(.zero, animated: false) }
     }
