@@ -19,6 +19,7 @@ struct ComposerView: View {
     @State private var fullscreenOffset: CGFloat = 0
     @State private var changingFullscreen = false
     @State private var fullscreenTransition: Task<Void, Never>?
+    @State private var editorGestureBounds: CGRect = .null
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var railAnimation: Animation? { reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.86) }
@@ -132,6 +133,9 @@ struct ComposerView: View {
                 ComposerEditor(text: $session.draft, focused: $focused, expanded: expanded, overflowing: !fullScreen && overflowing,
                                fullScreen: fullScreen, showsExpansionControl: showsExpansionControl && !fullScreen)
                     .frame(height: fullScreen ? max(100, availableHeight - 158) : nil)
+                    .onGeometryChange(for: CGRect.self) { geometry in
+                        geometry.frame(in: .named("composerGestures"))
+                    } action: { editorGestureBounds = $0 }
                     .padding(.leading, expanded ? 16 : 48)
                     .padding(.trailing, expanded ? 16 : 52)
                     .padding(.top, fullScreen ? 78 : expanded ? 16 : 8)
@@ -211,8 +215,11 @@ struct ComposerView: View {
             }
         }
         .padding(.horizontal, fullScreen ? 0 : expanded || focused ? 12 : 34)
-        .simultaneousGesture(DragGesture(minimumDistance: 12).onChanged { value in
+        .coordinateSpace(name: "composerGestures")
+        .simultaneousGesture(DragGesture(minimumDistance: 12, coordinateSpace: .named("composerGestures")).onChanged { value in
             guard !pickerPresented, !changingFullscreen,
+                  !editorGestureBounds.isNull,
+                  !editorGestureBounds.insetBy(dx: -16, dy: -28).contains(value.startLocation),
                   abs(value.translation.height) > abs(value.translation.width) * 1.25 else { return }
             focused = value.translation.height < 0
         })

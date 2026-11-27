@@ -22,7 +22,9 @@ struct ComposerEditor: UIViewRepresentable {
         view.alwaysBounceVertical = false
         view.bounces = false
         view.showsVerticalScrollIndicator = false
-        view.keyboardDismissMode = .interactive
+        // Selection-handle autoscrolling must not interactively dismiss the keyboard.
+        // The explicit selection-aware pan handles intentional dismissal instead.
+        view.keyboardDismissMode = .none
         view.accessibilityIdentifier = "composer"
         view.accessibilityLabel = "Ask Local Studio"
         let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.panned(_:)))
@@ -132,6 +134,13 @@ struct ComposerEditor: UIViewRepresentable {
 
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
                                shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool { true }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldRequireFailureOf otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            // A caret/selection long press owns its following drag, even before
+            // UIKit changes selectedRange into a nonempty selection.
+            otherGestureRecognizer is UILongPressGestureRecognizer
+        }
     }
 }
 
