@@ -6,7 +6,6 @@ struct ChatView: View {
     @State private var scrollPosition = ScrollPosition(edge: .bottom)
     @State private var width: CGFloat = 430
     @State private var viewportHeight: CGFloat = 839
-    @State private var workSelected = false
     @State private var selectedText: String?
     @FocusState private var composerFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -16,25 +15,19 @@ struct ChatView: View {
             Color.black.ignoresSafeArea()
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 32) {
-                    if workSelected {
-                        ForEach(session.messages.filter { $0.role == .assistant && !$0.attachments.isEmpty }) { message in
-                            MessageView(message: message, edit: { session.edit(message) }, selectText: { selectedText = message.text })
-                        }
-                    } else {
-                        ForEach(session.messages) { message in
-                            MessageView(message: message, edit: {
-                                session.edit(message)
-                                composerFocused = true
-                            }, selectText: { selectedText = message.text })
-                            .transition(.asymmetric(
-                                insertion: message.role == .user && !reduceMotion
-                                    ? .offset(y: max(0, viewportHeight - 116)).combined(with: .opacity) : .opacity,
-                                removal: .opacity))
-                        }
-                        if session.isGenerating {
-                            GenerationView(startedAt: session.generationStarted)
-                                .accessibilityIdentifier("generation")
-                        }
+                    ForEach(session.messages) { message in
+                        MessageView(message: message, edit: {
+                            session.edit(message)
+                            composerFocused = true
+                        }, selectText: { selectedText = message.text })
+                        .transition(.asymmetric(
+                            insertion: message.role == .user && !reduceMotion
+                                ? .offset(y: max(0, viewportHeight - 116)).combined(with: .opacity) : .opacity,
+                            removal: .opacity))
+                    }
+                    if session.isGenerating {
+                        GenerationView(startedAt: session.generationStarted)
+                            .accessibilityIdentifier("generation")
                     }
                     Color.clear.frame(height: 1).id("bottom")
                 }
@@ -51,10 +44,22 @@ struct ChatView: View {
             .safeAreaInset(edge: .top, spacing: 0) {
                 VStack(spacing: 20) {
                     HStack {
+                        Spacer()
                         if session.messages.isEmpty {
                             Button { session.toggleTemporary() } label: {
-                                Image(systemName: "bubble.left")
-                                    .font(.system(size: 23, weight: .medium))
+                                Path { path in
+                                    path.move(to: CGPoint(x: 3, y: 4))
+                                    path.addCurve(to: CGPoint(x: 21, y: 4), control1: CGPoint(x: 8, y: -1), control2: CGPoint(x: 16, y: -1))
+                                    path.move(to: CGPoint(x: 23, y: 9))
+                                    path.addCurve(to: CGPoint(x: 15, y: 23), control1: CGPoint(x: 25, y: 16), control2: CGPoint(x: 21, y: 22))
+                                    path.move(to: CGPoint(x: 10, y: 23))
+                                    path.addLine(to: CGPoint(x: 5, y: 21))
+                                    path.addLine(to: CGPoint(x: 1, y: 23))
+                                    path.addLine(to: CGPoint(x: 2, y: 18))
+                                    path.addCurve(to: CGPoint(x: 1, y: 8), control1: CGPoint(x: -1, y: 15), control2: CGPoint(x: 0, y: 11))
+                                }
+                                    .stroke(style: StrokeStyle(lineWidth: 2.3, lineCap: .round, lineJoin: .round))
+                                    .frame(width: 23, height: 23)
                                     .frame(width: 44, height: 44)
                             }
                             .foregroundStyle(session.isTemporary ? StudioPalette.accent : .white)
@@ -62,7 +67,6 @@ struct ChatView: View {
                             .accessibilityLabel("Temporary chat")
                             .accessibilityValue(session.isTemporary ? "On" : "Off")
                             .accessibilityIdentifier("temporaryChat")
-                            Spacer()
                         } else {
                             HStack(spacing: 8) {
                                 Button { session.newChat() } label: {
@@ -84,30 +88,6 @@ struct ChatView: View {
                             .padding(.horizontal, 4)
                             .foregroundStyle(.white)
                             .glassEffect(.regular.interactive(), in: .capsule)
-                            Spacer()
-                        }
-                    }
-                    .overlay {
-                        if session.messages.isEmpty {
-                            HStack(spacing: 0) {
-                                Button { workSelected = false } label: {
-                                    Text("Chat")
-                                        .frame(width: 71, height: 40)
-                                        .background(workSelected ? Color.clear : Color(white: 0.04), in: .capsule)
-                                }
-                                .accessibilityAddTraits(workSelected ? [] : .isSelected)
-                                Button { workSelected = true } label: {
-                                    Text("Work")
-                                        .frame(width: 71, height: 40)
-                                        .background(workSelected ? Color(white: 0.04) : Color.clear, in: .capsule)
-                                }
-                                .accessibilityAddTraits(workSelected ? .isSelected : [])
-                            }
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(.white)
-                            .padding(4)
-                            .frame(width: 158, height: 48)
-                            .glassEffect(.regular, in: .capsule)
                         }
                     }
                     if session.messages.isEmpty && session.isTemporary {
@@ -136,7 +116,6 @@ struct ChatView: View {
                         .accessibilityLabel("Scroll to bottom")
                     }
                     ComposerView(session: session, availableWidth: width, focused: $composerFocused) {
-                        workSelected = false
                         composerFocused = false
                         session.send()
                         withAnimation(reduceMotion ? nil : .spring(response: 0.44, dampingFraction: 0.86)) {

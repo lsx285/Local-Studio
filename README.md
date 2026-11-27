@@ -2,9 +2,9 @@
 
 A native Swift 6 iPhone frontend for future LLM, image generation, and editing models running on your PC. No network requests, server, model integration, or third-party app dependencies yet.
 
-The interface follows measured 430 × 932 pt references: black canvas, native Liquid Glass chrome, deep-blue user bubbles, an expanding composer, ordered photo attachments, and a blue dot-field generation animation. The temporary/new-chat controls sit at the **top left**, as requested. The unrelated navigation control, microphone, and waveform button are omitted.
+The interface follows measured 430 × 932 pt references: black canvas, native Liquid Glass chrome, deep-blue user bubbles, an expanding composer, ordered photo attachments, and a blue dot-field generation animation. The temporary/new-chat controls sit at the **top right**, matching the screenshots. The Chat/Work selector, unrelated navigation control, microphone, and waveform button are omitted.
 
-Normal conversations stay on the iPhone using an atomically written, file-protected archive. Temporary conversations stay in memory and disappear after process termination. New chat deletes the current conversation. Long-press a prompt to copy, edit, select, or share it. The plus opens Apple's native Photos picker, with up to eight ordered photos. Work shows artwork already created in this conversation. The overflow menu reserves space for future settings.
+Normal conversations stay on the iPhone using an atomically written, file-protected archive. Temporary conversations stay in memory and disappear after process termination. New chat deletes the current conversation. Long-press a prompt to copy, edit, select, or share it. The plus opens Apple's inline Photos grid in a rounded gallery panel, with up to eight ordered photos and floating back/confirmation controls. All Photos opens the full system browser. The overflow menu reserves space for future settings.
 
 **Frontend preview:** text replies and the 22-second generation sequence are simulated. Image requests show a bundled duck fixture cropped from the supplied reference. No image is actually generated or edited. This fixture and the app's original cursive-L vector icon are the only artwork bundled; personal screenshots and recordings are not published.
 

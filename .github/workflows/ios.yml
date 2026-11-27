@@ -57,7 +57,7 @@ jobs:
           echo "id=$DEVICE" >> "$GITHUB_OUTPUT"
           xcrun simctl boot "$DEVICE" || true
           xcrun simctl bootstatus "$DEVICE" -b
-          xcrun simctl status_bar "$DEVICE" override --time '1:54' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
+          xcrun simctl status_bar "$DEVICE" override --time '1:54' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState discharging --batteryLevel 100
           xcrun simctl addmedia "$DEVICE" LocalStudio/Resources/DemoArtwork.jpg
       - name: Exercise frontend and capture screenshots
         run: |

@@ -13,6 +13,8 @@ final class LocalStudioUITests: XCTestCase {
         app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
         app.launch()
+        XCTAssertFalse(app.buttons["Chat"].exists)
+        XCTAssertFalse(app.buttons["Work"].exists)
     }
 
     func testComposerConversationAndNewChat() {
@@ -31,6 +33,7 @@ final class LocalStudioUITests: XCTestCase {
         XCTAssertEqual(composer.value as? String, "Short text")
         app.buttons["sendPrompt"].tap()
         XCTAssertTrue(app.buttons["newChat"].waitForExistence(timeout: 3))
+        XCTAssertGreaterThan(app.buttons["newChat"].frame.midX, app.frame.width * 0.7)
         app.buttons["newChat"].tap()
         XCTAssertFalse(app.staticTexts["userMessage"].exists)
         XCTAssertTrue(app.buttons["temporaryChat"].exists)
@@ -53,9 +56,12 @@ final class LocalStudioUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["temporaryBanner"].exists)
         capture("07-temporary")
         app.buttons["addPhotos"].tap()
-        // PHPicker runs in a system service; assert a presented sheet rather than private hierarchy details.
-        XCTAssertTrue(app.navigationBars.firstMatch.waitForExistence(timeout: 5) || app.buttons["Cancel"].waitForExistence(timeout: 5))
+        // Picker content belongs to a private system service; our surrounding controls remain testable.
+        XCTAssertTrue(app.buttons["closePhotoGallery"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["confirmPhotos"].exists)
         capture("08-photo-picker")
+        app.buttons["closePhotoGallery"].tap()
+        XCTAssertFalse(app.buttons["closePhotoGallery"].exists)
     }
 
     func testReferenceScenes() {

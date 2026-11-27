@@ -57,12 +57,15 @@ struct MessageView: View {
                             .padding(.vertical, 11)
                             .background(StudioPalette.bubble, in: .rect(cornerRadius: 24))
                             .contextMenu {
-                                Text(message.createdAt.formatted(date: .abbreviated, time: .shortened))
+                                Text(Calendar.current.isDateInToday(message.createdAt)
+                                     ? "Today, \(message.createdAt.formatted(date: .omitted, time: .shortened))"
+                                     : message.createdAt.formatted(date: .abbreviated, time: .shortened))
                                 Button("Copy", systemImage: "square.on.square") { UIPasteboard.general.string = message.text }
                                 Button("Edit", systemImage: "pencil", action: edit)
                                 Button("Select text", systemImage: "text.cursor", action: selectText)
                                 ShareLink(item: message.text) { Label("Share prompt", systemImage: "square.and.arrow.up") }
                             }
+                            .tint(.white)
                             .accessibilityIdentifier("userMessage")
                     }
                 } else {

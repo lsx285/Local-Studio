@@ -8,6 +8,8 @@ struct ComposerView: View {
     var focused: FocusState<Bool>.Binding
     let send: () -> Void
     @State private var pickerPresented = false
+    @State private var fullPickerPresented = false
+    @State private var pendingSelection: [PhotosPickerItem] = []
     @State private var selection: [PhotosPickerItem] = []
     @State private var loadingPhotos = false
     @State private var photoError = false
@@ -52,7 +54,11 @@ struct ComposerView: View {
                     .padding(.bottom, 12)
             }
             HStack(alignment: .center, spacing: 12) {
-                Button { pickerPresented = true } label: {
+                Button {
+                    focused.wrappedValue = false
+                    pendingSelection = []
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { pickerPresented = true }
+                } label: {
                     if loadingPhotos {
                         ProgressView().frame(width: 32, height: 32)
                     } else {
@@ -91,7 +97,56 @@ struct ComposerView: View {
         .glassEffect(.regular, in: .rect(cornerRadius: expanded || !session.attachments.isEmpty ? 28 : 26))
         .padding(.horizontal, expanded ? 12 : 34)
         .animation(.spring(response: 0.3, dampingFraction: 0.9), value: expanded)
-        .photosPicker(isPresented: $pickerPresented, selection: $selection,
+        .overlay(alignment: .bottom) {
+            if pickerPresented {
+                PhotosPicker(selection: $pendingSelection, maxSelectionCount: max(1, 8 - session.attachments.count),
+                             selectionBehavior: .continuousAndOrdered, matching: .images) { EmptyView() }
+                    .photosPickerStyle(.inline)
+                    .photosPickerAccessoryVisibility(.hidden)
+                    .photosPickerDisabledCapabilities([.selectionActions, .search, .collectionNavigation, .stagingArea])
+                    .frame(height: availableWidth * 1.26)
+                    .background(.black)
+                    .clipShape(.rect(cornerRadius: 44))
+                    .overlay(alignment: .bottom) {
+                        HStack {
+                            Button {
+                                withAnimation { pickerPresented = false }
+                                pendingSelection = []
+                            } label: {
+                                Image(systemName: "chevron.left")
+                                    .font(.system(size: 23, weight: .medium))
+                                    .frame(width: 44, height: 44)
+                            }
+                            .glassEffect(.regular.interactive(), in: .circle)
+                            .accessibilityLabel("Close photo gallery")
+                            .accessibilityIdentifier("closePhotoGallery")
+                            Spacer()
+                            Button {
+                                pickerPresented = false
+                                if pendingSelection.isEmpty { fullPickerPresented = true }
+                                else {
+                                    selection = pendingSelection
+                                    pendingSelection = []
+                                }
+                            } label: {
+                                Text(pendingSelection.isEmpty ? "All Photos" : "Add \(pendingSelection.count) photo\(pendingSelection.count == 1 ? "" : "s")")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .padding(.horizontal, 22)
+                                    .frame(height: 44)
+                            }
+                            .glassEffect(.regular.tint(pendingSelection.isEmpty ? .clear : StudioPalette.accent).interactive(), in: .capsule)
+                            .accessibilityIdentifier("confirmPhotos")
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 24)
+                    }
+                    .padding(.horizontal, 12)
+                    .offset(y: 22)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .photosPicker(isPresented: $fullPickerPresented, selection: $selection,
                       maxSelectionCount: max(1, 8 - session.attachments.count), selectionBehavior: .ordered, matching: .images)
         .task(id: selection) {
             guard !selection.isEmpty else { return }
