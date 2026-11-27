@@ -16,9 +16,63 @@ struct ComposerView: View {
     @State private var loadingPhotos = false
     @State private var photoError = false
     @State private var galleryDrag: CGFloat = 0
+    @State private var fullscreenOffset: CGFloat = 0
+    @State private var changingFullscreen = false
+    @State private var fullscreenTransition: Task<Void, Never>?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var railAnimation: Animation? { reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.86) }
+
+    private func setFullscreenLayout(_ expanded: Bool, offset: CGFloat) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            fullScreen = expanded
+            fullscreenOffset = offset
+        }
+    }
+
+    private func toggleFullscreen() {
+        guard !changingFullscreen else { return }
+        fullscreenTransition?.cancel()
+        if reduceMotion {
+            setFullscreenLayout(!fullScreen, offset: 0)
+            focused = true
+            return
+        }
+        changingFullscreen = true
+        let closing = fullScreen
+        let travel = min(650, availableHeight)
+        fullscreenTransition = Task { @MainActor in
+            defer { changingFullscreen = false; fullscreenTransition = nil }
+            do {
+                if closing {
+                    // The reference dismisses the large panel faster than it presents it.
+                    withAnimation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.22)) {
+                        fullscreenOffset = travel
+                    }
+                    try await Task.sleep(for: .seconds(0.22))
+                    try Task.checkCancellation()
+                    setFullscreenLayout(false, offset: 0)
+                    focused = true
+                } else {
+                    // Preserve the editor/selection while reproducing the short keyboard dip.
+                    focused = false
+                    try await Task.sleep(for: .seconds(0.16))
+                    try Task.checkCancellation()
+                    setFullscreenLayout(true, offset: travel)
+                    focused = true
+                    // Commit the offscreen layout before starting its presentation transform.
+                    try await Task.sleep(for: .milliseconds(17))
+                    try Task.checkCancellation()
+                    withAnimation(.timingCurve(0.16, 1, 0.3, 1, duration: 0.35)) {
+                        fullscreenOffset = 0
+                    }
+                    try await Task.sleep(for: .seconds(0.35))
+                }
+            } catch { /* The view disappeared or the presentation was cancelled. */ }
+        }
+    }
 
     private func dismissGallery() {
         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.24)) {
@@ -148,12 +202,7 @@ struct ComposerView: View {
         .overlay(alignment: .topTrailing) {
             if showsExpansionControl {
                 Button {
-                    var transaction = Transaction()
-                    transaction.disablesAnimations = true
-                    withTransaction(transaction) {
-                        fullScreen.toggle()
-                        focused = true
-                    }
+                    toggleFullscreen()
                 } label: {
                     StudioIcon(fullScreen ? .collapse : .expand)
                 }
@@ -166,12 +215,15 @@ struct ComposerView: View {
         }
         .padding(.horizontal, fullScreen ? 0 : expanded || focused ? 12 : 34)
         .simultaneousGesture(DragGesture(minimumDistance: 12).onChanged { value in
-            guard !pickerPresented,
+            guard !pickerPresented, !changingFullscreen,
                   abs(value.translation.height) > abs(value.translation.width) * 1.25 else { return }
             focused = value.translation.height < 0
         })
         .animation(.easeOut(duration: 0.18), value: expanded)
         .animation(.easeOut(duration: 0.25), value: focused)
+        .offset(y: fullscreenOffset)
+        .allowsHitTesting(!changingFullscreen)
+        .onDisappear { fullscreenTransition?.cancel() }
 
         .overlay(alignment: .bottom) {
             if pickerPresented {
