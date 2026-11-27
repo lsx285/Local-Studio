@@ -18,6 +18,8 @@ struct GenerationView: View {
         TimelineView(.animation(minimumInterval: reduceMotion ? 1 : 1 / 60, paused: referenceTime != nil)) { timeline in
             let elapsed = referenceTime ?? max(0, timeline.date.timeIntervalSince(startedAt))
             let progress = GenerationMotion.progress(at: elapsed)
+            let stage = progress < 35 ? "Sketching it out" : progress < 55 ? "Making the first draft" : progress < 72 ? "Setting the scene" : progress < 90 ? "Polishing details" : "Finishing up"
+            let sweep = 1.3 - ((elapsed + 0.3).truncatingRemainder(dividingBy: 1.5) / 1.5) * 1.6
             Group {
                 if elapsed < 2.8 {
                     Circle().fill(StudioPalette.accent)
@@ -25,9 +27,17 @@ struct GenerationView: View {
                         .frame(width: 300, alignment: .leading)
                 } else {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(progress < 35 ? "Sketching it out" : progress < 55 ? "Making the first draft" : progress < 72 ? "Setting the scene" : progress < 90 ? "Polishing details" : "Finishing up")
+                        Text(stage)
                             .font(.system(size: 17))
-                            .foregroundStyle(Color(white: 0.52))
+                            .lineLimit(1)
+                            .foregroundStyle(LinearGradient(
+                                colors: reduceMotion ? Array(repeating: Color(white: 0.52), count: 3)
+                                    : [Color(white: 0.3), Color(white: 0.68), Color(white: 0.3)],
+                                startPoint: UnitPoint(x: sweep - 0.6, y: 0.5),
+                                endPoint: UnitPoint(x: sweep + 0.6, y: 0.5)))
+                            .frame(height: 21, alignment: .leading)
+                            .contentTransition(.opacity)
+                            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: stage)
                             .opacity(reduceMotion ? 1 : min(1, max(0, (23 - elapsed) / 0.2)))
                         Canvas { context, _ in
                             let position = min(Double(GenerationMotion.frameCount - 1), max(0, ((reduceMotion ? 18 : elapsed) - 2.8) * 15))

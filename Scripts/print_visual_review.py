@@ -5,7 +5,7 @@ import subprocess
 import sys
 import tempfile
 
-for index, path in enumerate(sorted(Path(sys.argv[1]).rglob('*.png'))[:32]):
+for index, path in enumerate(sorted(Path(sys.argv[1]).rglob('*.png'))[:64]):
     with tempfile.TemporaryDirectory() as folder:
         target = Path(folder) / 'review.jpg'
         subprocess.run(['sips', '-s', 'format', 'jpeg', '-s', 'formatOptions', '70', '-Z', '1400', str(path), '--out', str(target)], check=True, capture_output=True)

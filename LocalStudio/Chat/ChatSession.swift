@@ -33,6 +33,17 @@ final class ChatSession {
             }
         case "conversation":
             messages = [ChatMessage(role: .user, text: "Hello"), ChatMessage(role: .assistant, text: "Hello! 😊 Lovely to have you here. How’s your day going?")]
+        case "artwork":
+            if let url = Bundle.main.url(forResource: "DemoArtwork", withExtension: "jpg"),
+               let data = try? Data(contentsOf: url), let photo = PhotoAttachment(data: data) {
+                messages = [ChatMessage(role: .user, text: "Remove the background", attachments: [photo]),
+                            ChatMessage(role: .assistant, text: "", attachments: [photo])]
+            }
+        case "history":
+            for index in 1...12 {
+                messages.append(ChatMessage(role: .user, text: "Message \(index)"))
+                messages.append(ChatMessage(role: .assistant, text: "Reply \(index). " + String(repeating: "This is a local conversation preview. ", count: 6)))
+            }
         case "generation":
             messages = [ChatMessage(role: .user, text: "Generate an image of a pond with various animals residing in it")]
             let offset = Double(ProcessInfo.processInfo.environment["LOCAL_STUDIO_GENERATION_OFFSET"] ?? "10") ?? 10

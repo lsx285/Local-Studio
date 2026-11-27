@@ -2,12 +2,14 @@ import SwiftUI
 
 struct ChatView: View {
     @Bindable var session: ChatSession
-    @State private var atBottom = true
+    @State private var followsBottom = true
+    @State private var bottomDistance: CGFloat = 0
+    @State private var isUserScrolling = false
+    @State private var keyboardVisible = false
     @State private var scrollPosition = ScrollPosition(edge: .bottom)
     @State private var width: CGFloat = 430
     @State private var viewportHeight: CGFloat = 839
-    @State private var selectedText: String?
-    @FocusState private var composerFocused: Bool
+    @State private var composerFocused = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -19,7 +21,7 @@ struct ChatView: View {
                         MessageView(message: message, edit: {
                             session.edit(message)
                             composerFocused = true
-                        }, selectText: { selectedText = message.text })
+                        })
                         .transition(.asymmetric(
                             insertion: message.role == .user && !reduceMotion
                                 ? .offset(y: max(0, viewportHeight - 116)).combined(with: .opacity) : .opacity,
@@ -36,11 +38,28 @@ struct ChatView: View {
                 .padding(.bottom, 14)
             }
             .scrollPosition($scrollPosition)
-            .defaultScrollAnchor(.bottom, for: .sizeChanges)
+            .defaultScrollAnchor(.bottom, for: .initialOffset)
             .scrollDismissesKeyboard(.interactively)
-            .onScrollGeometryChange(for: Bool.self) { geometry in
-                geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 50
-            } action: { _, value in atBottom = value }
+            .accessibilityIdentifier("conversation")
+            .onScrollPhaseChange { _, phase in
+                isUserScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
+            }
+            .onScrollGeometryChange(for: ConversationScrollMetrics.self) { geometry in
+                ConversationScrollMetrics(
+                    distance: max(0, geometry.contentSize.height + geometry.contentInsets.bottom
+                                  - geometry.containerSize.height - geometry.contentOffset.y),
+                    contentHeight: geometry.contentSize.height,
+                    viewportHeight: geometry.containerSize.height,
+                    canScroll: geometry.contentSize.height + geometry.contentInsets.top + geometry.contentInsets.bottom
+                               > geometry.containerSize.height + 1)
+            } action: { old, value in
+                bottomDistance = value.distance
+                if !value.canScroll || value.distance <= 12 { followsBottom = true }
+                else if isUserScrolling && value.distance > 48 { followsBottom = false }
+                if followsBottom && !isUserScrolling && (old.contentHeight != value.contentHeight || old.viewportHeight != value.viewportHeight) {
+                    scrollPosition.scrollTo(edge: .bottom)
+                }
+            }
             .safeAreaInset(edge: .top, spacing: 0) {
                 VStack(spacing: 20) {
                     HStack {
@@ -90,60 +109,79 @@ struct ChatView: View {
                             .glassEffect(.regular.interactive(), in: .capsule)
                         }
                     }
-                    if session.messages.isEmpty && session.isTemporary {
-                        Label("Temporary chat", systemImage: "text.badge.minus")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(Color(red: 65 / 255, green: 167 / 255, blue: 247 / 255))
-                            .accessibilityIdentifier("temporaryBanner")
-                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 0)
                 .padding(.bottom, 0)
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                VStack(spacing: 14) {
-                    if !atBottom && !session.messages.isEmpty {
+                ComposerView(session: session, availableWidth: width, focused: $composerFocused) {
+                    followsBottom = true
+                    isUserScrolling = false
+                    composerFocused = false
+                    session.send()
+                    withAnimation(reduceMotion ? nil : .spring(response: 0.44, dampingFraction: 0.86)) {
+                        scrollPosition.scrollTo(edge: .bottom)
+                    }
+                }
+                .overlay(alignment: .top) {
+                    if !followsBottom && bottomDistance > 24 && !session.messages.isEmpty {
                         Button {
+                            followsBottom = true
+                            isUserScrolling = false
                             withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { scrollPosition.scrollTo(edge: .bottom) }
                         } label: {
-                            Image(systemName: "arrow.down")
-                                .font(.system(size: 23, weight: .medium))
+                            Path { path in
+                                path.move(to: CGPoint(x: 18, y: 11.5))
+                                path.addLine(to: CGPoint(x: 18, y: 24))
+                                path.move(to: CGPoint(x: 12.5, y: 18.5))
+                                path.addLine(to: CGPoint(x: 18, y: 24))
+                                path.addLine(to: CGPoint(x: 23.5, y: 18.5))
+                            }
+                                .stroke(style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
                                 .frame(width: 36, height: 36)
                         }
                         .foregroundStyle(.white)
                         .glassEffect(.regular.interactive(), in: .circle)
                         .accessibilityLabel("Scroll to bottom")
-                    }
-                    ComposerView(session: session, availableWidth: width, focused: $composerFocused) {
-                        composerFocused = false
-                        session.send()
-                        withAnimation(reduceMotion ? nil : .spring(response: 0.44, dampingFraction: 0.86)) {
-                            scrollPosition.scrollTo(edge: .bottom)
-                        }
+                        .accessibilityIdentifier("scrollToBottom")
+                        .offset(y: -50)
                     }
                 }
-                .padding(.bottom, 0)
+                .padding(.bottom, keyboardVisible ? 12 : 0)
             }
             .onGeometryChange(for: CGSize.self) { $0.size } action: {
                 width = $0.width
                 viewportHeight = $0.height
             }
             .onChange(of: session.messages.count) {
-                if atBottom { withAnimation(reduceMotion ? nil : .smooth) { scrollPosition.scrollTo(edge: .bottom) } }
+                if session.messages.isEmpty { followsBottom = true }
+                if followsBottom { withAnimation(reduceMotion ? nil : .smooth) { scrollPosition.scrollTo(edge: .bottom) } }
             }
         }
         .task { await session.restore() }
-        .sheet(isPresented: Binding(get: { selectedText != nil }, set: { if !$0 { selectedText = nil } })) {
-            NavigationStack {
-                ScrollView { Text(selectedText ?? "").textSelection(.enabled).padding(24).frame(maxWidth: .infinity, alignment: .leading) }
-                    .navigationTitle("Select text")
-                    .toolbar { Button("Done") { selectedText = nil } }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
+            let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect ?? .zero
+            let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
+            withAnimation(reduceMotion ? nil : .easeOut(duration: duration)) { keyboardVisible = frame.height > 100 }
+            if followsBottom { scrollPosition.scrollTo(edge: .bottom) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
+                keyboardVisible = false
+                composerFocused = false
             }
-            .preferredColorScheme(.dark)
+            if followsBottom { scrollPosition.scrollTo(edge: .bottom) }
         }
         .alert("Storage unavailable", isPresented: Binding(get: { session.storageError != nil }, set: { if !$0 { session.storageError = nil } })) {
             Button("OK") { session.storageError = nil }
         } message: { Text(session.storageError ?? "") }
     }
+}
+
+private struct ConversationScrollMetrics: Equatable {
+    let distance: CGFloat
+    let contentHeight: CGFloat
+    let viewportHeight: CGFloat
+    let canScroll: Bool
 }

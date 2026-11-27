@@ -5,7 +5,7 @@ import ImageIO
 struct ComposerView: View {
     @Bindable var session: ChatSession
     let availableWidth: CGFloat
-    var focused: FocusState<Bool>.Binding
+    @Binding var focused: Bool
     let send: () -> Void
     @State private var pickerPresented = false
     @State private var fullPickerPresented = false
@@ -15,7 +15,16 @@ struct ComposerView: View {
     @State private var photoError = false
 
     private var expanded: Bool {
-        session.draft.contains("\n") || (session.draft as NSString).size(withAttributes: [.font: UIFont.systemFont(ofSize: 17)]).width > availableWidth - 158
+        session.draft.contains("\n") || (session.draft as NSString).size(withAttributes: [.font: UIFont.systemFont(ofSize: 17)]).width > availableWidth - sideInset * 2 - 100
+    }
+
+    private var sideInset: CGFloat { focused || session.draft.contains("\n") ? 12 : 34 }
+
+    private var overflowing: Bool {
+        let width = availableWidth - 24 - 32
+        let height = (session.draft as NSString).boundingRect(with: CGSize(width: width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: UIFont.systemFont(ofSize: 17)], context: nil).height
+        return height > UIFont.systemFont(ofSize: 17).lineHeight * 6
     }
 
     var body: some View {
@@ -45,74 +54,71 @@ struct ComposerView: View {
                 .clipped()
                 .accessibilityIdentifier("attachmentRail")
             }
-            if expanded {
-                TextField("Ask Local Studio", text: $session.draft, axis: .vertical)
-                    .font(.system(size: 17))
-                    .lineLimit(2...6)
-                    .focused(focused)
-                    .accessibilityIdentifier("composer")
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
-                    .padding(.bottom, 12)
-            }
-            HStack(alignment: .center, spacing: 12) {
-                Button {
-                    focused.wrappedValue = false
-                    pendingSelection = []
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { pickerPresented = true }
-                } label: {
-                    if loadingPhotos {
-                        ProgressView().frame(width: 32, height: 32)
-                    } else {
-                        Image(systemName: "plus").font(.system(size: 26, weight: .regular))
-                            .frame(width: 32, height: 32)
-                    }
-                }
-                .disabled(loadingPhotos || session.attachments.count >= 8)
-                .accessibilityLabel("Add photos")
-                .accessibilityIdentifier("addPhotos")
-                if !expanded {
-                    TextField("Ask Local Studio", text: $session.draft, axis: .vertical)
-                        .font(.system(size: 17))
-                        .lineLimit(1)
-                        .focused(focused)
-                        .accessibilityIdentifier("composer")
-                }
-                Spacer(minLength: 0)
-                Button {
-                    if session.isGenerating { session.cancelGeneration() } else { send() }
-                } label: {
-                    ZStack {
-                        Circle().fill(StudioPalette.accent)
-                        if session.isGenerating {
-                            RoundedRectangle(cornerRadius: 1.5).fill(.white)
-                                .frame(width: 11, height: 11)
+            ZStack(alignment: .bottom) {
+                ComposerEditor(text: $session.draft, focused: $focused, expanded: expanded, overflowing: overflowing)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, expanded ? 16 : 48)
+                    .padding(.trailing, expanded ? 16 : 52)
+                    .padding(.top, expanded ? 16 : 8)
+                    .padding(.bottom, expanded ? 60 : 8)
+                HStack(alignment: .center, spacing: 12) {
+                    Button {
+                        focused = false
+                        pendingSelection = []
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { pickerPresented = true }
+                    } label: {
+                        if loadingPhotos {
+                            ProgressView().frame(width: 32, height: 32)
                         } else {
-                            Path { path in
-                                path.move(to: CGPoint(x: 16, y: 22.5))
-                                path.addLine(to: CGPoint(x: 16, y: 10))
-                                path.move(to: CGPoint(x: 10.5, y: 15.5))
-                                path.addLine(to: CGPoint(x: 16, y: 10))
-                                path.addLine(to: CGPoint(x: 21.5, y: 15.5))
-                            }
-                            .stroke(.white, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                            Image(systemName: "plus").font(.system(size: 26, weight: .regular))
+                                .frame(width: 32, height: 32)
                         }
                     }
-                    .frame(width: 32, height: 32)
+                    .disabled(loadingPhotos || session.attachments.count >= 8)
+                    .accessibilityLabel("Add photos")
+                    .accessibilityIdentifier("addPhotos")
+                    Spacer(minLength: 0)
+                    Button {
+                        if session.isGenerating { session.cancelGeneration() } else { send() }
+                    } label: {
+                        ZStack {
+                            Circle().fill(StudioPalette.accent)
+                            if session.isGenerating {
+                                RoundedRectangle(cornerRadius: 1.5).fill(.white)
+                                    .frame(width: 11, height: 11)
+                            } else {
+                                Path { path in
+                                    path.move(to: CGPoint(x: 16, y: 22.5))
+                                    path.addLine(to: CGPoint(x: 16, y: 10))
+                                    path.move(to: CGPoint(x: 10.5, y: 15.5))
+                                    path.addLine(to: CGPoint(x: 16, y: 10))
+                                    path.addLine(to: CGPoint(x: 21.5, y: 15.5))
+                                }
+                                .stroke(.white, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                            }
+                        }
+                        .frame(width: 32, height: 32)
+                    }
+                    .disabled(!session.isGenerating && !session.canSend)
+                    .opacity(session.isGenerating || session.canSend ? 1 : 0.5)
+                    .accessibilityLabel(session.isGenerating ? "Stop generation" : "Send prompt")
+                    .accessibilityIdentifier("sendPrompt")
                 }
-                .disabled(!session.isGenerating && !session.canSend)
-                .opacity(session.isGenerating || session.canSend ? 1 : 0.5)
-                .accessibilityLabel(session.isGenerating ? "Stop generation" : "Send prompt")
-                .accessibilityIdentifier("sendPrompt")
+                .padding(.horizontal, 8)
+                .padding(.vertical, 8)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 8)
         }
         .foregroundStyle(.white)
         .glassEffect(.regular, in: .rect(cornerRadius: expanded || !session.attachments.isEmpty ? 28 : 26))
         .clipShape(.rect(cornerRadius: expanded || !session.attachments.isEmpty ? 28 : 26))
-        .padding(.horizontal, expanded ? 12 : 34)
-        .animation(.spring(response: 0.3, dampingFraction: 0.9), value: expanded)
+        .padding(.horizontal, expanded || focused ? 12 : 34)
+        .simultaneousGesture(DragGesture(minimumDistance: 18).onEnded { value in
+            guard !expanded || !focused,
+                  abs(value.translation.height) > abs(value.translation.width) * 1.25 else { return }
+            focused = value.translation.height < 0
+        })
+        .animation(.easeOut(duration: 0.18), value: expanded)
+        .animation(.easeOut(duration: 0.25), value: focused)
         .overlay(alignment: .bottom) {
             if pickerPresented {
                 PhotosPicker(selection: $pendingSelection, maxSelectionCount: max(1, 8 - session.attachments.count),
