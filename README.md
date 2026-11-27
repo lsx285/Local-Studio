@@ -18,7 +18,7 @@ All compilation happens in [GitHub Actions](../../actions). Push to `main`, open
 - Checkout **7.0.1** and upload-artifact **7.0.2**, pinned to their release commits.
 - Download **LocalStudio.ipa** directly from the run's artifact list. `archive: false` prevents a ZIP wrapper. The only uploaded artifact is the IPA.
 - The IPA contains an unsigned `Payload/LocalStudio.app`; installation on an iPhone requires signing through your chosen installation tool.
-- The workflow builds and validates the unsigned device app and uploads only `LocalStudio.ipa`. A separate job runs only the artwork-generation phase check in the simulator, including the final reveal. Other UI tests are excluded. The only downloadable artifact remains the IPA.
+- The workflow builds and validates the unsigned device app and uploads `LocalStudio.ipa` directly. A separate job runs only the artwork-generation phase check in the simulator, including the final reveal, and exports `GenerationScreenshots` for visual comparison. Other UI tests are excluded.
 
 Open `LocalStudio.xcodeproj` to browse the project. Build settings and shared scheme are checked in; no project generator, package manager, or signing secret is required.
 
