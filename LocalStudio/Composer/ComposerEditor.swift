@@ -64,15 +64,28 @@ struct ComposerEditor: UIViewRepresentable {
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: ComposerNativeTextView, context: Context) -> CGSize? {
         guard let width = proposal.width, width.isFinite, width > 0 else { return nil }
-        if fullScreen {
-            let proposedHeight = proposal.height ?? 240
-            return CGSize(width: width, height: proposedHeight.isFinite ? max(1, proposedHeight) : 240)
+        return CGSize(width: width, height: max(1, proposal.height ?? 32))
+    }
+
+    // A separate TextKit layout measures the target before the live editor animates.
+    @MainActor static func measuredHeight(text: String, width: CGFloat, reserve: Bool) -> CGFloat {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.minimumLineHeight = 24
+        paragraph.maximumLineHeight = 24
+        let storage = NSTextStorage(string: text + "\u{200B}", attributes: [
+            .font: UIFont.systemFont(ofSize: 17), .paragraphStyle: paragraph
+        ])
+        let layout = NSLayoutManager()
+        let container = NSTextContainer(size: CGSize(width: width, height: 168))
+        container.maximumNumberOfLines = 7
+        container.lineFragmentPadding = 0
+        if reserve {
+            container.exclusionPaths = [UIBezierPath(rect: CGRect(x: max(0, width - 32), y: 0, width: 32, height: 24))]
         }
-        // Sizing must not mutate the live UITextView or its exclusion paths. Doing so
-        // invalidates native layout while SwiftUI is still negotiating a proposal.
-        let height = expanded ? context.coordinator.measuredHeight(text: text, width: width,
-                                                                  reserve: showsExpansionControl) : 32
-        return CGSize(width: width, height: ceil(height))
+        layout.addTextContainer(container)
+        storage.addLayoutManager(layout)
+        layout.ensureLayout(for: container)
+        return min(168, max(48, ceil(layout.usedRect(for: container).height)))
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -80,33 +93,7 @@ struct ComposerEditor: UIViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate {
         var parent: ComposerEditor
-        private var measurement: (text: String, width: CGFloat, reserve: Bool, height: CGFloat)?
         init(_ parent: ComposerEditor) { self.parent = parent }
-
-        func measuredHeight(text: String, width: CGFloat, reserve: Bool) -> CGFloat {
-            if let measurement, measurement.text == text, measurement.width == width, measurement.reserve == reserve {
-                return measurement.height
-            }
-            let paragraph = NSMutableParagraphStyle()
-            paragraph.minimumLineHeight = 24
-            paragraph.maximumLineHeight = 24
-            let storage = NSTextStorage(string: text + "\u{200B}", attributes: [
-                .font: UIFont.systemFont(ofSize: 17), .paragraphStyle: paragraph
-            ])
-            let layout = NSLayoutManager()
-            let container = NSTextContainer(size: CGSize(width: width, height: 168))
-            container.maximumNumberOfLines = 7
-            container.lineFragmentPadding = 0
-            if reserve {
-                container.exclusionPaths = [UIBezierPath(rect: CGRect(x: max(0, width - 32), y: 0, width: 32, height: 24))]
-            }
-            layout.addTextContainer(container)
-            storage.addLayoutManager(layout)
-            layout.ensureLayout(for: container)
-            let height = min(168, max(48, ceil(layout.usedRect(for: container).height)))
-            measurement = (text, width, reserve, height)
-            return height
-        }
 
         func textViewDidChange(_ textView: UITextView) {
             let value = textView.text ?? ""

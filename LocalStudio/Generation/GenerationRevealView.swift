@@ -18,7 +18,7 @@ struct GenerationRevealView: View {
             }
             if let artwork = RevealGeometry.artwork {
                 Image(uiImage: artwork).resizable().scaledToFill()
-                    .frame(width: width, height: width / 1.5).clipped()
+                    .frame(width: width, height: width / 1.5)
                     .mask {
                         Canvas { context, _ in
                             context.scaleBy(x: scale, y: scale)

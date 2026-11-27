@@ -9,15 +9,12 @@ struct ChatView: View {
     @State private var scrollPosition = ScrollPosition(edge: .bottom)
     @State private var composerFocused = false
     @State private var composerFullScreen = false
+    @State private var composerTransitioning = false
     @State private var endVisible = true
-    @State private var promptMenu: PresentedPromptMenu?
-    @State private var promptShare: PromptShare?
-    @State private var selectedMessageID: UUID?
-    @State private var selectionRevision = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var showsScrollButton: Bool {
-        !composerFullScreen && !endVisible && !followsBottom && bottomDistance > 24 && !session.messages.isEmpty
+        !composerFullScreen && !composerTransitioning && !endVisible && !followsBottom && bottomDistance > 24 && !session.messages.isEmpty
     }
 
     var body: some View {
@@ -29,12 +26,10 @@ struct ChatView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 32) {
                         ForEach(session.messages) { message in
-                            MessageView(message: message, showPromptMenu: { message, frame in
-                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                                withAnimation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.86)) {
-                                    promptMenu = PresentedPromptMenu(message: message, frame: frame)
-                                }
-                            }, selectionRequest: selectedMessageID == message.id ? selectionRevision : 0)
+                            MessageView(message: message) { message in
+                                session.edit(message)
+                                composerFocused = true
+                            }
                             .transition(.asymmetric(
                                 insertion: message.role == .user && !reduceMotion
                                     ? .offset(y: max(0, viewportHeight - 116)).combined(with: .opacity) : .opacity,
@@ -46,7 +41,7 @@ struct ChatView: View {
                         }
                         Color.clear.frame(height: 1).id("bottom")
                             .onScrollVisibilityChange(threshold: 0.1) { visible in
-                                guard !composerFullScreen else { return }
+                                guard !composerFullScreen && !composerTransitioning else { return }
                                 endVisible = visible
                                 if visible { followsBottom = true; bottomDistance = 0 }
                             }
@@ -59,8 +54,8 @@ struct ChatView: View {
                 .scrollClipDisabled()
                 .scrollPosition($scrollPosition)
                 .defaultScrollAnchor(.bottom, for: .initialOffset)
-                .scrollDismissesKeyboard(composerFullScreen ? .never : .interactively)
-                .scrollDisabled(composerFullScreen)
+                .scrollDismissesKeyboard(composerFullScreen || composerTransitioning ? .never : .interactively)
+                .scrollDisabled(composerFullScreen || composerTransitioning)
                 .onScrollPhaseChange { _, phase in
                     isUserScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
                 }
@@ -72,7 +67,7 @@ struct ChatView: View {
                         canScroll: geometry.contentSize.height + geometry.contentInsets.top + geometry.contentInsets.bottom
                                    > geometry.containerSize.height + 1)
                 } action: { old, value in
-                    guard !composerFullScreen else { return }
+                    guard !composerFullScreen && !composerTransitioning else { return }
                     bottomDistance = value.distance
                     if endVisible || !value.canScroll || value.distance <= 16 { followsBottom = true }
                     else if isUserScrolling && value.distance > 48 { followsBottom = false }
@@ -120,7 +115,8 @@ struct ChatView: View {
                 }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     ComposerView(session: session, availableWidth: width, availableHeight: viewportHeight,
-                                 focused: $composerFocused, fullScreen: $composerFullScreen) {
+                                 focused: $composerFocused, fullScreen: $composerFullScreen,
+                                 changingFullscreen: $composerTransitioning) {
                         followsBottom = true
                         isUserScrolling = false
                         composerFocused = false
@@ -130,83 +126,43 @@ struct ChatView: View {
                         }
                     }
                     .overlay(alignment: .top) {
-                        if showsScrollButton {
-                            Button {
-                                followsBottom = true
-                                isUserScrolling = false
-                                withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { scrollPosition.scrollTo(edge: .bottom) }
-                            } label: {
-                                StudioIcon(.downArrow)
+                        ZStack {
+                            if showsScrollButton {
+                                Button {
+                                    followsBottom = true
+                                    isUserScrolling = false
+                                    withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { scrollPosition.scrollTo(edge: .bottom) }
+                                } label: {
+                                    StudioIcon(.downArrow)
+                                }
+                                .foregroundStyle(.white)
+                                .glassEffect(.regular.interactive(), in: .circle)
+                                .accessibilityLabel("Scroll to bottom")
+                                .transition(reduceMotion ? .opacity : .scale(scale: 0.5).combined(with: .opacity))
+                                .offset(y: -50)
                             }
-                            .foregroundStyle(.white)
-                            .glassEffect(.regular.interactive(), in: .circle)
-                            .accessibilityLabel("Scroll to bottom")
-                            .transition(reduceMotion ? .opacity : .scale(scale: 0.55)
-                                .combined(with: .opacity).combined(with: .offset(y: 8)))
-                            .offset(y: -50)
                         }
+                        .animation(reduceMotion ? .linear(duration: 0.12) : .timingCurve(0.2, 0.8, 0.2, 1, duration: 0.2), value: showsScrollButton)
                     }
-                    .animation(reduceMotion ? .linear(duration: 0.12) : .spring(response: 0.28, dampingFraction: 0.88), value: showsScrollButton)
                     .padding(.bottom, keyboardVisible && !composerFullScreen ? 12 : 0)
                 }
                 .onChange(of: session.messages.count) {
                     if session.messages.isEmpty { followsBottom = true }
-                    if followsBottom && !composerFullScreen { withAnimation(reduceMotion ? nil : .smooth) { scrollPosition.scrollTo(edge: .bottom) } }
+                    if followsBottom && !composerFullScreen && !composerTransitioning { withAnimation(reduceMotion ? nil : .smooth) { scrollPosition.scrollTo(edge: .bottom) } }
                 }
             }
-            .overlay {
-                if let presented = promptMenu {
-                    GeometryReader { geometry in
-                        let origin = geometry.frame(in: .global).origin
-                        let anchor = presented.frame.offsetBy(dx: -origin.x - 4, dy: -origin.y)
-                        let previewBottom = anchor.midY + anchor.height * 0.575
-                        let below = previewBottom + 20
-                        let menuTop = below + 216 <= geometry.size.height - 8
-                            ? below : max(8, anchor.minY - 236)
-                        ZStack(alignment: .topLeading) {
-                            Color.black.opacity(0.5).ignoresSafeArea()
-                                .onTapGesture { promptMenu = nil }
-                            Text(presented.message.text)
-                                .font(.system(size: 17)).lineSpacing(3)
-                                .foregroundStyle(StudioPalette.prompt)
-                                .padding(.horizontal, 16).padding(.vertical, 11)
-                                .frame(width: presented.frame.width, height: presented.frame.height)
-                                .background(StudioPalette.bubble, in: .rect(cornerRadius: 24))
-                                .scaleEffect(1.15, anchor: .trailing)
-                                .transition(.scale(scale: 1 / 1.15, anchor: .trailing).combined(with: .opacity))
-                                .position(x: anchor.midX, y: anchor.midY)
-                                .allowsHitTesting(false)
-                            PromptContextMenu(message: presented.message) { action in
-                                promptMenu = nil
-                                switch action {
-                                case .copy: UIPasteboard.general.string = presented.message.text
-                                case .edit:
-                                    session.edit(presented.message)
-                                    composerFocused = true
-                                case .selectText:
-                                    selectedMessageID = presented.message.id
-                                    selectionRevision += 1
-                                case .share: promptShare = PromptShare(text: presented.message.text)
-                                }
-                            }
-                            .position(x: geometry.size.width - 145, y: menuTop + 108)
-                        }
-                    }
-                }
-            }
-            .sheet(item: $promptShare) { PromptShareSheet(text: $0.text) }
             .task { await session.restore() }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
                 let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect ?? .zero
                 let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
                 withAnimation(reduceMotion ? nil : .easeOut(duration: duration)) { keyboardVisible = frame.height > 100 }
-                if followsBottom && !composerFullScreen { scrollPosition.scrollTo(edge: .bottom) }
+                if followsBottom && !composerFullScreen && !composerTransitioning { scrollPosition.scrollTo(edge: .bottom) }
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
                     keyboardVisible = false
                 }
-                if followsBottom && !composerFullScreen { scrollPosition.scrollTo(edge: .bottom) }
+                if followsBottom && !composerFullScreen && !composerTransitioning { scrollPosition.scrollTo(edge: .bottom) }
             }
             .alert("Storage unavailable", isPresented: Binding(get: { session.storageError != nil }, set: { if !$0 { session.storageError = nil } })) {
                 Button("OK") { session.storageError = nil }

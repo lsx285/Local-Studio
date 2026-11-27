@@ -4,13 +4,11 @@ import Photos
 
 struct MessageView: View {
     let message: ChatMessage
-    let showPromptMenu: (ChatMessage, CGRect) -> Void
-    let selectionRequest: Int
+    let editPrompt: (ChatMessage) -> Void
     @State private var speech: AVSpeechSynthesizer?
     @State private var photoError: String?
     @State private var selectingText = false
     @State private var textSize: CGSize = .zero
-    @State private var bubbleFrame: CGRect = .zero
 
     var body: some View {
         VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 8) {
@@ -79,9 +77,26 @@ struct MessageView: View {
                             .padding(.horizontal, 16)
                             .padding(.vertical, 11)
                             .background(StudioPalette.bubble, in: .rect(cornerRadius: 24))
-                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { bubbleFrame = $0 }
-                            .onLongPressGesture(minimumDuration: 0.5) {
-                                if !selectingText { showPromptMenu(message, bubbleFrame) }
+                            .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 24))
+                            .contextMenu {
+                                Section {
+                                    Button { UIPasteboard.general.string = message.text } label: {
+                                        Label { Text("Copy") } icon: { StudioIcon(.copy) }
+                                    }
+                                    Button { editPrompt(message) } label: {
+                                        Label { Text("Edit") } icon: { StudioIcon(.edit) }
+                                    }
+                                    Button { selectingText = true } label: {
+                                        Label { Text("Select text") } icon: { StudioIcon(.selectText) }
+                                    }
+                                    ShareLink(item: message.text) {
+                                        Label { Text("Share prompt") } icon: { StudioIcon(.share) }
+                                    }
+                                } header: {
+                                    Text(Calendar.current.isDateInToday(message.createdAt)
+                                         ? "Today, \(message.createdAt.formatted(date: .omitted, time: .shortened))"
+                                         : message.createdAt.formatted(date: .abbreviated, time: .shortened))
+                                }
                             }
                             .tint(.white)
 
@@ -141,7 +156,6 @@ struct MessageView: View {
         }
         .frame(maxWidth: .infinity, alignment: message.role == .user ? .trailing : .leading)
         .onDisappear { speech?.stopSpeaking(at: .immediate) }
-        .onChange(of: selectionRequest) { if selectionRequest > 0 { selectingText = true } }
         .alert("Couldn’t save photo", isPresented: Binding(get: { photoError != nil }, set: { if !$0 { photoError = nil } })) {
             Button("OK") { photoError = nil }
         } message: { Text(photoError ?? "") }

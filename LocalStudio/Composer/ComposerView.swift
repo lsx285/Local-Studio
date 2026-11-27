@@ -8,6 +8,7 @@ struct ComposerView: View {
     let availableHeight: CGFloat
     @Binding var focused: Bool
     @Binding var fullScreen: Bool
+    @Binding var changingFullscreen: Bool
     let send: () -> Void
     @State private var pickerPresented = false
     @State private var fullPickerPresented = false
@@ -16,58 +17,27 @@ struct ComposerView: View {
     @State private var loadingPhotos = false
     @State private var photoError = false
     @State private var galleryDrag: CGFloat = 0
-    @State private var fullscreenOffset: CGFloat = 0
-    @State private var changingFullscreen = false
-    @State private var fullscreenTransition: Task<Void, Never>?
     @State private var editorGestureBounds: CGRect = .null
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var railAnimation: Animation? { reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.86) }
 
-    private func setFullscreenLayout(_ expanded: Bool, offset: CGFloat) {
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            fullScreen = expanded
-            fullscreenOffset = offset
-        }
-    }
-
     private func toggleFullscreen() {
         guard !changingFullscreen else { return }
-        fullscreenTransition?.cancel()
-        if reduceMotion {
-            setFullscreenLayout(!fullScreen, offset: 0)
-            focused = true
-            return
-        }
-        changingFullscreen = true
         focused = true
-        let closing = fullScreen
-        let travel = min(650, availableHeight)
-        fullscreenTransition = Task { @MainActor in
-            defer { changingFullscreen = false; fullscreenTransition = nil }
-            do {
-                if closing {
-                    // The reference dismisses the large panel faster than it presents it.
-                    withAnimation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.22)) {
-                        fullscreenOffset = travel
-                    }
-                    try await Task.sleep(for: .seconds(0.22))
-                    try Task.checkCancellation()
-                    setFullscreenLayout(false, offset: 0)
-                } else {
-                    // Presentation changes only the panel; keep the current keyboard/responder.
-                    setFullscreenLayout(true, offset: travel)
-                    // Commit the offscreen layout before starting its presentation transform.
-                    try await Task.sleep(for: .milliseconds(17))
-                    try Task.checkCancellation()
-                    withAnimation(.timingCurve(0.16, 1, 0.3, 1, duration: 0.35)) {
-                        fullscreenOffset = 0
-                    }
-                    try await Task.sleep(for: .seconds(0.35))
-                }
-            } catch { /* The view disappeared or the presentation was cancelled. */ }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let animation: Animation? = reduceMotion ? nil : fullScreen
+            ? .timingCurve(0.2, 0.8, 0.2, 1, duration: 0.22)
+            : .timingCurve(0.16, 1, 0.3, 1, duration: 0.35)
+        changingFullscreen = true
+        // Animate the same editor into its destination bounds. No offscreen
+        // translation or delayed layout swap can move it beneath the keyboard.
+        withAnimation(animation, completionCriteria: .removed) {
+            fullScreen.toggle()
+        } completion: {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { changingFullscreen = false }
         }
     }
 
@@ -80,7 +50,17 @@ struct ComposerView: View {
     }
 
     private var expanded: Bool {
-        fullScreen || session.draft.contains("\n") || (session.draft as NSString).size(withAttributes: [.font: UIFont.systemFont(ofSize: 17)]).width > availableWidth - sideInset * 2 - 100
+        fullScreen || inlineExpanded
+    }
+
+    private var inlineExpanded: Bool {
+        session.draft.contains("\n") || (session.draft as NSString).size(withAttributes: [.font: UIFont.systemFont(ofSize: 17)]).width > availableWidth - sideInset * 2 - 100
+    }
+
+    private var inlineEditorHeight: CGFloat {
+        guard inlineExpanded else { return 32 }
+        let width = max(1, availableWidth - 56)
+        return ComposerEditor.measuredHeight(text: session.draft, width: width, reserve: showsExpansionControl)
     }
 
     private var sideInset: CGFloat { focused || session.draft.contains("\n") ? 12 : 34 }
@@ -124,14 +104,13 @@ struct ComposerView: View {
                     .padding(8)
                 }
                 .scrollIndicators(.hidden)
-                .clipped()
 
             }
             ZStack(alignment: .bottom) {
                 ComposerEditor(text: $session.draft, focused: $focused, expanded: expanded, overflowing: !fullScreen && overflowing,
                                fullScreen: fullScreen, transitioning: changingFullscreen,
                                showsExpansionControl: showsExpansionControl && !fullScreen)
-                    .frame(height: fullScreen ? max(100, availableHeight - 158) : nil)
+                    .frame(height: fullScreen ? max(100, availableHeight - 158) : inlineEditorHeight)
                     .onGeometryChange(for: CGRect.self) { geometry in
                         geometry.frame(in: .named("composerGestures"))
                     } action: { editorGestureBounds = $0 }
@@ -180,24 +159,14 @@ struct ComposerView: View {
         }
         .foregroundStyle(.white)
         .background {
-            if !fullScreen {
-                Color.clear.glassEffect(.regular, in: .rect(cornerRadius: expanded || !session.attachments.isEmpty ? 28 : 26))
-            }
+            UnevenRoundedRectangle(topLeadingRadius: 40, topTrailingRadius: 40)
+                .fill(StudioPalette.fullscreenComposer)
+                .ignoresSafeArea(.all, edges: .bottom)
+                .opacity(fullScreen ? 1 : 0)
+                .allowsHitTesting(false)
         }
-        .clipShape(.rect(topLeadingRadius: fullScreen ? 40 : expanded || !session.attachments.isEmpty ? 28 : 26,
-                         bottomLeadingRadius: fullScreen ? 0 : expanded || !session.attachments.isEmpty ? 28 : 26,
-                         bottomTrailingRadius: fullScreen ? 0 : expanded || !session.attachments.isEmpty ? 28 : 26,
-                         topTrailingRadius: fullScreen ? 40 : expanded || !session.attachments.isEmpty ? 28 : 26))
-        .background {
-            if fullScreen {
-                // Extend only the backdrop below the keyboard and home indicator.
-                // Applied after clipping so the editor keeps its keyboard-aware bounds.
-                UnevenRoundedRectangle(topLeadingRadius: 40, topTrailingRadius: 40)
-                    .fill(StudioPalette.fullscreenComposer)
-                    .ignoresSafeArea(.all, edges: .bottom)
-                    .allowsHitTesting(false)
-            }
-        }
+        .glassEffect(fullScreen ? .identity : .regular.interactive(),
+                     in: .rect(cornerRadius: expanded || !session.attachments.isEmpty ? 28 : 26))
         .overlay(alignment: .topTrailing) {
             if showsExpansionControl {
                 Button {
@@ -221,10 +190,7 @@ struct ComposerView: View {
                   abs(value.translation.height) > abs(value.translation.width) * 1.25 else { return }
             focused = value.translation.height < 0
         })
-        .animation(.easeOut(duration: 0.18), value: expanded)
         .animation(.easeOut(duration: 0.25), value: focused)
-        .offset(y: fullscreenOffset)
-        .onDisappear { fullscreenTransition?.cancel() }
         .overlay(alignment: .bottom) {
             if pickerPresented {
                 PhotosPicker(selection: $pendingSelection, maxSelectionCount: max(1, 8 - session.attachments.count),
