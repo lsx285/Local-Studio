@@ -74,3 +74,14 @@ The fitted regular-bar reveal has been replaced by `GenerationReveal.mask`: 68 f
 Rasterizing the extracted vector shapes gives mean visibility-mask intersection-over-union **0.99096**, ranging **0.94986–0.99937** across 68 frames. This uses a 12/255 visibility threshold and excludes isolated compression specks. It measures contour geometry only and must not be described as 99% overall rendered accuracy.
 
 [Workflow run 46073241531](https://github.com/lsx285/Local-Studio/actions/runs/46073241531) passed the unsigned device build/package checks and the focused simulator check. It exported 31 fixed-time screenshots plus a completed-image capture; reveal captures are spaced 50 ms apart. The captures were downloaded and inspected. The image begins at y674 in both the 17.65-second reveal capture and the real completed-image capture, confirming that the final handoff preserves its vertical position. Registered dot-region comparisons still show pixel differences in antialiasing, brightness, and compression; no full-animation 99–100% pixel-identity claim is made.
+
+
+## Icon and fullscreen refinement
+
+All 21 app-owned glyphs now use reference-derived custom SVG artwork. No `systemName`/`systemImage` substitutions remain in the app source. Context-menu variants use 24 pt layout slots, response-row variants 18 pt slots with 12 pt gaps, header icons 44 pt slots, and composer controls their existing 32/36 pt slots. The former plus measured 63 × 63 high-coverage pixels; the reference measures 54 × 54 pixels (18 × 18 pt). Expand/collapse, send, stop, back, and scroll-arrow references were also inspected at full source resolution. Keyboard, Photos, share-sheet and status-bar graphics remain system-owned.
+
+The actual SVG files were rasterized locally for side-by-side review at reference scale. Their half-pixel coordinate alignment was corrected and edge coverage fitted to the screenshots. OpenAI's published Apps SDK UI icons were compared as candidates; iOS variants differed for several glyphs, so those candidates were not substituted. The accepted review criterion is visual identity at the measured sizes, as clarified by the user; no pixel-for-pixel native iOS identity is claimed.
+
+Fullscreen sizing no longer observes geometry affected by its own composer inset. The hidden header releases its height, conversation auto-scrolling is suppressed while fullscreen is open, and the editor sizing-mode change is not animated. Crucially, `sizeThatFits` no longer changes the live text view or its exclusion paths: it uses a separate cached TextKit layout limited to seven visible lines. Only actual bounds changes update the editor's exclusion path. This removes a source-level layout invalidation cycle; the freeze fix remains subject to manual device review because UI tests are disabled.
+
+The workflow is IPA-only again. No simulator/UI tests or workflow monitoring were performed for this refinement.

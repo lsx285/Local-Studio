@@ -44,22 +44,31 @@ struct ComposerEditor: UIViewRepresentable {
             view.attributedText = NSAttributedString(string: text, attributes: attributes)
             view.selectedRange = NSRange(location: (text as NSString).length, length: 0)
         }
-        view.typingAttributes = attributes
-        view.textContainerInset = expanded ? .zero : UIEdgeInsets(top: 4, left: 0, bottom: 4, right: 0)
-        view.isScrollEnabled = overflowing || fullScreen
-        if !view.isScrollEnabled { view.setContentOffset(.zero, animated: false) }
-        view.reserveExpansionControl(showsExpansionControl && !fullScreen, width: view.bounds.width)
-        view.setNeedsLayout()
+        let existingParagraph = view.typingAttributes[.paragraphStyle] as? NSParagraphStyle
+        if existingParagraph?.minimumLineHeight != 24 || existingParagraph?.maximumLineHeight != 24 {
+            view.typingAttributes = attributes
+        }
+        let inset = expanded ? UIEdgeInsets.zero : UIEdgeInsets(top: 4, left: 0, bottom: 4, right: 0)
+        if view.textContainerInset != inset { view.textContainerInset = inset }
+        let scrolling = overflowing || fullScreen
+        if view.isScrollEnabled != scrolling { view.isScrollEnabled = scrolling }
+        if !view.isScrollEnabled && view.contentOffset != .zero { view.setContentOffset(.zero, animated: false) }
+        view.reserveExpansionControl(showsExpansionControl && !fullScreen)
+        if view.placeholderNeedsUpdate { view.setNeedsLayout() }
         if focused && !view.isFirstResponder && view.window != nil { view.becomeFirstResponder() }
         if !focused && view.isFirstResponder { view.resignFirstResponder() }
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: ComposerNativeTextView, context: Context) -> CGSize? {
-        guard let width = proposal.width else { return nil }
-        if fullScreen { return CGSize(width: width, height: proposal.height ?? 240) }
-        uiView.reserveExpansionControl(showsExpansionControl, width: width)
-        let measured = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
-        let height = expanded ? min(168, max(48, measured)) : 32
+        guard let width = proposal.width, width.isFinite, width > 0 else { return nil }
+        if fullScreen {
+            let proposedHeight = proposal.height ?? 240
+            return CGSize(width: width, height: proposedHeight.isFinite ? max(1, proposedHeight) : 240)
+        }
+        // Sizing must not mutate the live UITextView or its exclusion paths. Doing so
+        // invalidates native layout while SwiftUI is still negotiating a proposal.
+        let height = expanded ? context.coordinator.measuredHeight(text: text, width: width,
+                                                                  reserve: showsExpansionControl) : 32
         return CGSize(width: width, height: ceil(height))
     }
 
@@ -68,7 +77,33 @@ struct ComposerEditor: UIViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate {
         var parent: ComposerEditor
+        private var measurement: (text: String, width: CGFloat, reserve: Bool, height: CGFloat)?
         init(_ parent: ComposerEditor) { self.parent = parent }
+
+        func measuredHeight(text: String, width: CGFloat, reserve: Bool) -> CGFloat {
+            if let measurement, measurement.text == text, measurement.width == width, measurement.reserve == reserve {
+                return measurement.height
+            }
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.minimumLineHeight = 24
+            paragraph.maximumLineHeight = 24
+            let storage = NSTextStorage(string: text + "\u{200B}", attributes: [
+                .font: UIFont.systemFont(ofSize: 17), .paragraphStyle: paragraph
+            ])
+            let layout = NSLayoutManager()
+            let container = NSTextContainer(size: CGSize(width: width, height: 168))
+            container.maximumNumberOfLines = 7
+            container.lineFragmentPadding = 0
+            if reserve {
+                container.exclusionPaths = [UIBezierPath(rect: CGRect(x: max(0, width - 32), y: 0, width: 32, height: 24))]
+            }
+            layout.addTextContainer(container)
+            storage.addLayoutManager(layout)
+            layout.ensureLayout(for: container)
+            let height = min(168, max(48, ceil(layout.usedRect(for: container).height)))
+            measurement = (text, width, reserve, height)
+            return height
+        }
 
         func textViewDidChange(_ textView: UITextView) {
             let value = textView.text ?? ""
@@ -103,13 +138,21 @@ struct ComposerEditor: UIViewRepresentable {
 final class ComposerNativeTextView: UITextView {
     private let placeholder = UILabel()
     private var exclusionWidth: CGFloat?
+    private var reservesExpansionControl = false
+    var placeholderNeedsUpdate: Bool { placeholder.isHidden != !(text ?? "").isEmpty }
 
-    func reserveExpansionControl(_ reserve: Bool, width: CGFloat) {
-        let target: CGFloat? = reserve ? width : nil
+    func reserveExpansionControl(_ reserve: Bool) {
+        guard reservesExpansionControl != reserve else { return }
+        reservesExpansionControl = reserve
+        setNeedsLayout()
+    }
+
+    private func updateExclusionPath() {
+        let target: CGFloat? = reservesExpansionControl ? bounds.width : nil
         guard target != exclusionWidth else { return }
         exclusionWidth = target
-        textContainer.exclusionPaths = reserve
-            ? [UIBezierPath(rect: CGRect(x: max(0, width - 32), y: 0, width: 32, height: 24))] : []
+        textContainer.exclusionPaths = reservesExpansionControl
+            ? [UIBezierPath(rect: CGRect(x: max(0, bounds.width - 32), y: 0, width: 32, height: 24))] : []
     }
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
@@ -125,6 +168,7 @@ final class ComposerNativeTextView: UITextView {
     required init?(coder: NSCoder) { return nil }
 
     override func layoutSubviews() {
+        updateExclusionPath()
         super.layoutSubviews()
         placeholder.isHidden = !(text ?? "").isEmpty
         placeholder.frame = CGRect(x: 0, y: textContainerInset.top + (24 - UIFont.systemFont(ofSize: 17).lineHeight) / 2,

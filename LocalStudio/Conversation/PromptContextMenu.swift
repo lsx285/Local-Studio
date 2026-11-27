@@ -4,12 +4,12 @@ import UIKit
 enum PromptMenuAction: String, CaseIterable, Identifiable {
     case copy = "Copy", edit = "Edit", selectText = "Select text", share = "Share prompt"
     var id: Self { self }
-    var symbol: String {
+    var glyph: StudioGlyph {
         switch self {
-        case .copy: "square.on.square"
-        case .edit: "pencil"
-        case .selectText: "text.cursor"
-        case .share: "square.and.arrow.up"
+        case .copy: .copy
+        case .edit: .edit
+        case .selectText: .selectText
+        case .share: .share
         }
     }
 }
@@ -33,8 +33,7 @@ struct PromptContextMenu: View {
             ForEach(PromptMenuAction.allCases) { entry in
                 Button { action(entry) } label: {
                     HStack(spacing: 12) {
-                        Image(systemName: entry.symbol)
-                            .font(.system(size: 19, weight: .regular))
+                        StudioIcon(entry.glyph)
                             .frame(width: 24, height: 24)
                         Text(entry.rawValue).font(.system(size: 17))
                         Spacer(minLength: 0)

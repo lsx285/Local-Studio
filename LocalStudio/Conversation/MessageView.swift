@@ -24,8 +24,7 @@ struct MessageView: View {
                             .clipShape(.rect(cornerRadius: 16))
                             .overlay(alignment: .bottomTrailing) {
                                 ShareLink(item: Image(uiImage: photo.image), preview: SharePreview("Local Studio artwork", image: Image(uiImage: photo.image))) {
-                                    Image(systemName: "square.and.arrow.up")
-                                        .font(.system(size: 19, weight: .medium))
+                                    StudioIcon(.share)
                                         .frame(width: 36, height: 36)
                                 }
                                 .accessibilityLabel("Share artwork")
@@ -36,10 +35,10 @@ struct MessageView: View {
                             .accessibilityLabel("Demo artwork")
                             .accessibilityIdentifier("assistantArtwork")
                             .contextMenu {
-                                Button("Copy", systemImage: "square.on.square") {
-                                    UIPasteboard.general.image = photo.image
+                                Button { UIPasteboard.general.image = photo.image } label: {
+                                    Label { Text("Copy") } icon: { StudioIcon(.copy) }
                                 }
-                                Button("Save to photos", systemImage: "square.and.arrow.down") {
+                                Button {
                                     let data = photo.data
                                     Task {
                                         let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
@@ -53,9 +52,9 @@ struct MessageView: View {
                                             }
                                         } catch { photoError = "This artwork couldn’t be saved. Please try again." }
                                     }
-                                }
+                                } label: { Label { Text("Save to photos") } icon: { StudioIcon(.save) } }
                                 ShareLink(item: Image(uiImage: photo.image), preview: SharePreview("Local Studio artwork", image: Image(uiImage: photo.image))) {
-                                    Label("Share", systemImage: "square.and.arrow.up")
+                                    Label { Text("Share") } icon: { StudioIcon(.share) }
                                 }
                             }
                             .tint(.white)
@@ -107,9 +106,9 @@ struct MessageView: View {
                 }
             }
             if message.role == .assistant {
-                HStack(spacing: 16) {
+                HStack(spacing: 12) {
                     if !message.text.isEmpty {
-                        Button { UIPasteboard.general.string = message.text } label: { Image(systemName: "square.on.square") }
+                        Button { UIPasteboard.general.string = message.text } label: { StudioIcon(.copyAction) }
                             .accessibilityLabel("Copy response")
                         Button {
                             if speech?.isSpeaking == true { speech?.stopSpeaking(at: .immediate) }
@@ -117,22 +116,22 @@ struct MessageView: View {
                                 if speech == nil { speech = AVSpeechSynthesizer() }
                                 speech?.speak(AVSpeechUtterance(string: message.text))
                             }
-                        } label: { Image(systemName: "speaker.wave.2") }
+                        } label: { StudioIcon(.speaker) }
                             .accessibilityLabel("Read aloud")
-                        ShareLink(item: message.text) { Image(systemName: "square.and.arrow.up") }
+                        ShareLink(item: message.text) { StudioIcon(.shareAction) }
                             .accessibilityLabel("Share response")
                     } else if let photo = message.attachments.first {
                         ShareLink(item: Image(uiImage: photo.image), preview: SharePreview("Local Studio artwork", image: Image(uiImage: photo.image))) {
-                            Image(systemName: "square.and.arrow.up")
+                            StudioIcon(.shareAction)
                         }
                         .accessibilityLabel("Share artwork")
                     }
                     Menu {
                         if !message.text.isEmpty {
-                            Button("Select text", systemImage: "text.cursor") { selectingText = true }
+                            Button { selectingText = true } label: { Label { Text("Select text") } icon: { StudioIcon(.selectText) } }
                         }
                         Text("Frontend preview · local models coming later")
-                    } label: { Image(systemName: "ellipsis") }
+                    } label: { StudioIcon(.moreAction) }
                         .accessibilityLabel("Response options")
                 }
                 .font(.system(size: 17, weight: .medium))
@@ -190,7 +189,7 @@ private struct SentPhotoAttachments: View {
             .accessibilityLabel("Attached photo")
             .accessibilityIdentifier("userAttachment")
             .contextMenu {
-                Button("Copy", systemImage: "square.on.square") { UIPasteboard.general.image = photo.image }
+                Button { UIPasteboard.general.image = photo.image } label: { Label { Text("Copy") } icon: { StudioIcon(.copy) } }
             }
             .tint(.white)
     }

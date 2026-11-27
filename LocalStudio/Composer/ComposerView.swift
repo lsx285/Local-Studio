@@ -35,7 +35,7 @@ struct ComposerView: View {
     private var sideInset: CGFloat { focused || session.draft.contains("\n") ? 12 : 34 }
 
     private var draftHeight: CGFloat {
-        let width = availableWidth - 24 - 32
+        let width = max(1, availableWidth - 24 - 32)
         let paragraph = NSMutableParagraphStyle()
         paragraph.minimumLineHeight = 24
         paragraph.maximumLineHeight = 24
@@ -61,7 +61,7 @@ struct ComposerView: View {
                                     Button {
                                         withAnimation(railAnimation) { session.attachments.removeAll { $0.id == attachment.id } }
                                     } label: {
-                                        Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
+                                        StudioIcon(.close)
                                             .frame(width: 22, height: 22)
                                             .background(.black.opacity(0.5), in: .circle)
                                     }
@@ -78,9 +78,8 @@ struct ComposerView: View {
                 .accessibilityIdentifier("attachmentRail")
             }
             ZStack(alignment: .bottom) {
-                ComposerEditor(text: $session.draft, focused: $focused, expanded: expanded, overflowing: overflowing,
+                ComposerEditor(text: $session.draft, focused: $focused, expanded: expanded, overflowing: !fullScreen && overflowing,
                                fullScreen: fullScreen, showsExpansionControl: showsExpansionControl && !fullScreen)
-                    .fixedSize(horizontal: false, vertical: !fullScreen)
                     .frame(height: fullScreen ? max(100, availableHeight - 158) : nil)
                     .padding(.leading, expanded ? 16 : 48)
                     .padding(.trailing, expanded ? 16 : 52)
@@ -96,7 +95,7 @@ struct ComposerView: View {
                             if loadingPhotos {
                                 ProgressView().frame(width: 32, height: 32)
                             } else {
-                                Image(systemName: "plus").font(.system(size: 26, weight: .regular))
+                                StudioIcon(.plus)
                                     .frame(width: 32, height: 32)
                             }
                         }
@@ -111,19 +110,7 @@ struct ComposerView: View {
                     } label: {
                         ZStack {
                             Circle().fill(StudioPalette.accent)
-                            if session.isGenerating {
-                                RoundedRectangle(cornerRadius: 1.5).fill(.white)
-                                    .frame(width: 11, height: 11)
-                            } else {
-                                Path { path in
-                                    path.move(to: CGPoint(x: 16, y: 22.5))
-                                    path.addLine(to: CGPoint(x: 16, y: 10))
-                                    path.move(to: CGPoint(x: 10.5, y: 15.5))
-                                    path.addLine(to: CGPoint(x: 16, y: 10))
-                                    path.addLine(to: CGPoint(x: 21.5, y: 15.5))
-                                }
-                                .stroke(.white, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
-                            }
+                            StudioIcon(session.isGenerating ? .stop : .upArrow)
                         }
                         .frame(width: 32, height: 32)
                     }
@@ -152,28 +139,14 @@ struct ComposerView: View {
         .overlay(alignment: .topTrailing) {
             if showsExpansionControl {
                 Button {
-                    fullScreen.toggle()
-                    focused = true
-                } label: {
-                    Path { path in
-                        if fullScreen {
-                            path.move(to: CGPoint(x: 19.25, y: 9.083))
-                            path.addLine(to: CGPoint(x: 19.25, y: 14.083))
-                            path.addLine(to: CGPoint(x: 24.25, y: 14.083))
-                            path.move(to: CGPoint(x: 10.75, y: 17.583))
-                            path.addLine(to: CGPoint(x: 15.75, y: 17.583))
-                            path.addLine(to: CGPoint(x: 15.75, y: 22.583))
-                        } else {
-                            path.move(to: CGPoint(x: 16.25, y: 10.75))
-                            path.addLine(to: CGPoint(x: 21, y: 10.75))
-                            path.addLine(to: CGPoint(x: 21, y: 15.5))
-                            path.move(to: CGPoint(x: 10.75, y: 16.25))
-                            path.addLine(to: CGPoint(x: 10.75, y: 21))
-                            path.addLine(to: CGPoint(x: 15.5, y: 21))
-                        }
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        fullScreen.toggle()
+                        focused = true
                     }
-                    .stroke(style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
-                    .frame(width: 32, height: 32)
+                } label: {
+                    StudioIcon(fullScreen ? .collapse : .expand)
                 }
                 .foregroundStyle(.white.opacity(fullScreen ? 1 : 0.65))
                 .accessibilityLabel(fullScreen ? "Collapse composer" : "Expand composer")
@@ -190,7 +163,7 @@ struct ComposerView: View {
         })
         .animation(.easeOut(duration: 0.18), value: expanded)
         .animation(.easeOut(duration: 0.25), value: focused)
-        .animation(.easeOut(duration: 0.25), value: fullScreen)
+
         .overlay(alignment: .bottom) {
             if pickerPresented {
                 PhotosPicker(selection: $pendingSelection, maxSelectionCount: max(1, 8 - session.attachments.count),
@@ -206,8 +179,7 @@ struct ComposerView: View {
                             Button {
                                 dismissGallery()
                             } label: {
-                                Image(systemName: "chevron.left")
-                                    .font(.system(size: 23, weight: .medium))
+                                StudioIcon(.back)
                                     .frame(width: 44, height: 44)
                             }
                             .glassEffect(.regular.interactive(), in: .circle)
