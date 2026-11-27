@@ -8,6 +8,7 @@ struct ComposerEditor: UIViewRepresentable {
     let expanded: Bool
     let overflowing: Bool
     let fullScreen: Bool
+    let transitioning: Bool
     let showsExpansionControl: Bool
 
     func makeUIView(context: Context) -> ComposerNativeTextView {
@@ -25,7 +26,7 @@ struct ComposerEditor: UIViewRepresentable {
         // Selection-handle autoscrolling must not interactively dismiss the keyboard.
         // The explicit selection-aware pan handles intentional dismissal instead.
         view.keyboardDismissMode = .none
-        view.accessibilityIdentifier = "composer"
+
         view.accessibilityLabel = "Ask Local Studio"
         let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.panned(_:)))
         pan.cancelsTouchesInView = false
@@ -58,7 +59,7 @@ struct ComposerEditor: UIViewRepresentable {
         view.reserveExpansionControl(showsExpansionControl && !fullScreen)
         if view.placeholderNeedsUpdate { view.setNeedsLayout() }
         if focused && !view.isFirstResponder && view.window != nil { view.becomeFirstResponder() }
-        if !focused && view.isFirstResponder { view.resignFirstResponder() }
+        if !transitioning && !focused && view.isFirstResponder { view.resignFirstResponder() }
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: ComposerNativeTextView, context: Context) -> CGSize? {
@@ -112,10 +113,12 @@ struct ComposerEditor: UIViewRepresentable {
             if parent.text != value { parent.text = value }
         }
         func textViewDidBeginEditing(_ textView: UITextView) { if !parent.focused { parent.focused = true } }
-        func textViewDidEndEditing(_ textView: UITextView) { if parent.focused { parent.focused = false } }
+        func textViewDidEndEditing(_ textView: UITextView) {
+            if !parent.transitioning && parent.focused { parent.focused = false }
+        }
 
         @objc func panned(_ gesture: UIPanGestureRecognizer) {
-            guard gesture.state == .changed,
+            guard !parent.transitioning, gesture.state == .changed,
                   let view = gesture.view as? UITextView, view.selectedRange.length == 0 else { return }
             let delta = gesture.translation(in: view)
             guard abs(delta.y) >= 12, abs(delta.y) > abs(delta.x) * 1.25 else { return }
@@ -125,7 +128,7 @@ struct ComposerEditor: UIViewRepresentable {
         }
 
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-            guard let pan = gestureRecognizer as? UIPanGestureRecognizer,
+            guard !parent.transitioning, let pan = gestureRecognizer as? UIPanGestureRecognizer,
                   let view = pan.view as? UITextView, view.selectedRange.length == 0 else { return false }
             let velocity = pan.velocity(in: view)
             // Upward pans in an active long draft remain native text scrolling.

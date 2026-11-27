@@ -5,19 +5,9 @@ struct GenerationView: View {
     var availableWidth: CGFloat = 398
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var referenceTime: Double? {
-        #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--ui-testing"),
-           let value = ProcessInfo.processInfo.environment["LOCAL_STUDIO_GENERATION_OFFSET"] {
-            return Double(value)
-        }
-        #endif
-        return nil
-    }
-
     var body: some View {
-        TimelineView(.animation(minimumInterval: reduceMotion ? 1 : 1 / 60, paused: referenceTime != nil)) { timeline in
-            let elapsed = referenceTime ?? max(0, timeline.date.timeIntervalSince(startedAt))
+        TimelineView(.animation(minimumInterval: reduceMotion ? 1 : 1 / 60)) { timeline in
+            let elapsed = max(0, timeline.date.timeIntervalSince(startedAt))
             let progress = GenerationMotion.progress(at: elapsed)
             let stage = elapsed < 6.45 ? "Sketching it out" : elapsed < 10.95 ? "Making the first draft" : elapsed < 14.95 ? "Setting the scene" : "Polishing details"
             Group {
@@ -83,8 +73,6 @@ struct GenerationView: View {
 /// Each 59 Hz frame stores 660 radius/sRGB tuples and 64 label-luminance samples.
 /// Only this abstract motion trace is bundled; the recording never enters the app.
 private enum GenerationMotion {
-    static let artwork: UIImage? = Bundle.main.url(forResource: "DemoArtwork", withExtension: "jpg").flatMap { UIImage(contentsOfFile: $0.path) }
-
     static func labelGradient(at elapsed: Double, text: String, reduceMotion: Bool) -> LinearGradient {
         let frame = min(frameCount - 1, max(0, Int((elapsed - 1.85) * 59)))
         let width = max(1, (text as NSString).size(withAttributes: [.font: UIFont.systemFont(ofSize: 17)]).width)

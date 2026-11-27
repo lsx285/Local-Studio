@@ -21,18 +21,16 @@ enum StudioGlyph: String {
 
 struct StudioIcon: View {
     let glyph: StudioGlyph
-    var size: CGFloat? = nil
 
-    init(_ glyph: StudioGlyph, size: CGFloat? = nil) {
+    init(_ glyph: StudioGlyph) {
         self.glyph = glyph
-        self.size = size
     }
 
     var body: some View {
         Image("Icon-\(glyph.rawValue)")
             .renderingMode(.template)
             .resizable()
-            .frame(width: size ?? glyph.size, height: size ?? glyph.size)
+            .frame(width: glyph.size, height: glyph.size)
             .accessibilityHidden(true)
     }
 }

@@ -42,7 +42,7 @@ struct ChatView: View {
                         }
                         if session.isGenerating {
                             GenerationView(startedAt: session.generationStarted, availableWidth: width - 32)
-                                .accessibilityIdentifier("generation")
+
                         }
                         Color.clear.frame(height: 1).id("bottom")
                             .onScrollVisibilityChange(threshold: 0.1) { visible in
@@ -59,9 +59,8 @@ struct ChatView: View {
                 .scrollClipDisabled()
                 .scrollPosition($scrollPosition)
                 .defaultScrollAnchor(.bottom, for: .initialOffset)
-                .scrollDismissesKeyboard(.interactively)
+                .scrollDismissesKeyboard(composerFullScreen ? .never : .interactively)
                 .scrollDisabled(composerFullScreen)
-                .accessibilityIdentifier("conversation")
                 .onScrollPhaseChange { _, phase in
                     isUserScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
                 }
@@ -93,20 +92,18 @@ struct ChatView: View {
                                 .glassEffect(.regular.interactive(), in: .circle)
                                 .accessibilityLabel("Temporary chat")
                                 .accessibilityValue(session.isTemporary ? "On" : "Off")
-                                .accessibilityIdentifier("temporaryChat")
+
                             } else {
                                 HStack(spacing: 8) {
                                     Button { session.newChat() } label: {
                                         StudioIcon(.newChat)
-                                            .frame(width: 44, height: 44)
                                     }
                                     .accessibilityLabel("New chat")
-                                    .accessibilityIdentifier("newChat")
+
                                     Menu {
                                         Text(session.isTemporary ? "Temporary chat" : "Local Studio")
                                     } label: {
                                         StudioIcon(.moreHeader)
-                                            .frame(width: 44, height: 44)
                                     }
                                     .accessibilityLabel("More options")
                                 }
@@ -117,12 +114,9 @@ struct ChatView: View {
                         }
                     }
                     .frame(height: composerFullScreen ? 0 : nil)
-                    .clipped()
                     .opacity(composerFullScreen ? 0 : 1)
                     .allowsHitTesting(!composerFullScreen)
                     .padding(.horizontal, 20)
-                    .padding(.top, 0)
-                    .padding(.bottom, 0)
                 }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     ComposerView(session: session, availableWidth: width, availableHeight: viewportHeight,
@@ -147,7 +141,6 @@ struct ChatView: View {
                             .foregroundStyle(.white)
                             .glassEffect(.regular.interactive(), in: .circle)
                             .accessibilityLabel("Scroll to bottom")
-                            .accessibilityIdentifier("scrollToBottom")
                             .transition(reduceMotion ? .opacity : .scale(scale: 0.55)
                                 .combined(with: .opacity).combined(with: .offset(y: 8)))
                             .offset(y: -50)
@@ -212,7 +205,6 @@ struct ChatView: View {
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
                     keyboardVisible = false
-                    composerFocused = false
                 }
                 if followsBottom && !composerFullScreen { scrollPosition.scrollTo(edge: .bottom) }
             }

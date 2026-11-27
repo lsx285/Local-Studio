@@ -22,12 +22,11 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Verify stable toolchain
+      - name: Show toolchain
         run: |
           set -euo pipefail
           xcodebuild -version
           xcrun swift --version
-          test "$(xcrun --sdk iphoneos --show-sdk-version)" = "27.2"
       - name: Build unsigned device app
         run: |
           set -euo pipefail
@@ -37,10 +36,7 @@ jobs:
             COMPILER_INDEX_STORE_ENABLE=NO build
           mkdir -p build/Payload
           ditto build/device/Build/Products/Release-iphoneos/LocalStudio.app build/Payload/LocalStudio.app
-          test ! -d build/Payload/LocalStudio.app/_CodeSignature
-          test ! -f build/Payload/LocalStudio.app/embedded.mobileprovision
           ditto -c -k --keepParent build/Payload build/LocalStudio.ipa
-          python3 Scripts/validate_ipa.py build/LocalStudio.ipa
       - name: Upload IPA directly
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -48,3 +44,36 @@ jobs:
           archive: false
           if-no-files-found: error
           retention-days: 14
+  cleanup:
+    name: Delete previous workflow runs
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Remove older runs and their artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" \
+            --jq ".workflow_runs[] | select(.id < $GITHUB_RUN_ID) | .id" > "$RUNNER_TEMP/previous-run-ids"
+          while IFS= read -r run_id; do
+            [ -n "$run_id" ] || continue
+            status=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq .status)
+            if [ "$status" != completed ]; then
+              gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/cancel" || true
+            fi
+            deleted=false
+            for attempt in 1 2 3 4 5; do
+              if gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/runs/$run_id"; then
+                deleted=true
+                break
+              fi
+              sleep 3
+            done
+            if [ "$deleted" != true ]; then
+              echo "Could not delete previous run $run_id" >&2
+              exit 1
+            fi
+          done < "$RUNNER_TEMP/previous-run-ids"

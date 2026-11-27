@@ -33,7 +33,6 @@ struct MessageView: View {
                                 .padding(20)
                             }
                             .accessibilityLabel("Demo artwork")
-                            .accessibilityIdentifier("assistantArtwork")
                             .contextMenu {
                                 Button { UIPasteboard.general.image = photo.image } label: {
                                     Label { Text("Copy") } icon: { StudioIcon(.copy) }
@@ -85,7 +84,7 @@ struct MessageView: View {
                                 if !selectingText { showPromptMenu(message, bubbleFrame) }
                             }
                             .tint(.white)
-                            .accessibilityIdentifier("userMessage")
+
                     }
                 } else {
                     Group {
@@ -102,7 +101,7 @@ struct MessageView: View {
                         }
                     }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityIdentifier("assistantMessage")
+
                 }
             }
             if message.role == .assistant {
@@ -187,7 +186,6 @@ private struct SentPhotoAttachments: View {
             .frame(width: size.width, height: size.height)
             .clipShape(.rect(cornerRadius: 24))
             .accessibilityLabel("Attached photo")
-            .accessibilityIdentifier("userAttachment")
             .contextMenu {
                 Button { UIPasteboard.general.image = photo.image } label: { Label { Text("Copy") } icon: { StudioIcon(.copy) } }
             }

@@ -17,7 +17,7 @@ struct InlineMessageSelection: UIViewRepresentable {
         view.textContainer.lineFragmentPadding = 0
         view.contentInsetAdjustmentBehavior = .never
         view.tintColor = UIColor(red: 65 / 255, green: 166 / 255, blue: 247 / 255, alpha: 1)
-        view.accessibilityIdentifier = "inlineSelection"
+
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineSpacing = 3
         view.attributedText = NSAttributedString(string: text, attributes: [

@@ -34,7 +34,6 @@ struct PromptContextMenu: View {
                 Button { action(entry) } label: {
                     HStack(spacing: 12) {
                         StudioIcon(entry.glyph)
-                            .frame(width: 24, height: 24)
                         Text(entry.rawValue).font(.system(size: 17))
                         Spacer(minLength: 0)
                     }

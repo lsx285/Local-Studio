@@ -56,7 +56,6 @@ struct ComposerView: View {
                     try await Task.sleep(for: .seconds(0.22))
                     try Task.checkCancellation()
                     setFullscreenLayout(false, offset: 0)
-                    focused = true
                 } else {
                     // Presentation changes only the panel; keep the current keyboard/responder.
                     setFullscreenLayout(true, offset: travel)
@@ -114,7 +113,6 @@ struct ComposerView: View {
                                         withAnimation(railAnimation) { session.attachments.removeAll { $0.id == attachment.id } }
                                     } label: {
                                         StudioIcon(.close)
-                                            .frame(width: 22, height: 22)
                                             .background(.black.opacity(0.5), in: .circle)
                                     }
                                     .accessibilityLabel("Remove attachment")
@@ -127,11 +125,12 @@ struct ComposerView: View {
                 }
                 .scrollIndicators(.hidden)
                 .clipped()
-                .accessibilityIdentifier("attachmentRail")
+
             }
             ZStack(alignment: .bottom) {
                 ComposerEditor(text: $session.draft, focused: $focused, expanded: expanded, overflowing: !fullScreen && overflowing,
-                               fullScreen: fullScreen, showsExpansionControl: showsExpansionControl && !fullScreen)
+                               fullScreen: fullScreen, transitioning: changingFullscreen,
+                               showsExpansionControl: showsExpansionControl && !fullScreen)
                     .frame(height: fullScreen ? max(100, availableHeight - 158) : nil)
                     .onGeometryChange(for: CGRect.self) { geometry in
                         geometry.frame(in: .named("composerGestures"))
@@ -151,12 +150,11 @@ struct ComposerView: View {
                                 ProgressView().frame(width: 32, height: 32)
                             } else {
                                 StudioIcon(.plus)
-                                    .frame(width: 32, height: 32)
                             }
                         }
                         .disabled(loadingPhotos || session.attachments.count >= 8)
                         .accessibilityLabel("Add photos")
-                        .accessibilityIdentifier("addPhotos")
+
                     }
                     Spacer(minLength: 0)
                     Button {
@@ -174,7 +172,7 @@ struct ComposerView: View {
                     .allowsHitTesting(session.isGenerating || session.canSend)
                     .accessibilityHidden(!session.isGenerating && !session.canSend)
                     .accessibilityLabel(session.isGenerating ? "Stop generation" : "Send prompt")
-                    .accessibilityIdentifier("sendPrompt")
+
                 }
                 .padding(.horizontal, fullScreen ? 24 : 8)
                 .padding(.vertical, fullScreen ? 24 : 8)
@@ -208,8 +206,8 @@ struct ComposerView: View {
                     StudioIcon(fullScreen ? .collapse : .expand)
                 }
                 .foregroundStyle(.white.opacity(fullScreen ? 1 : 0.65))
+                .disabled(changingFullscreen)
                 .accessibilityLabel(fullScreen ? "Collapse composer" : "Expand composer")
-                .accessibilityIdentifier("expandComposer")
                 .padding(.top, fullScreen ? 16 : (session.attachments.isEmpty ? 12 : 148))
                 .padding(.trailing, fullScreen ? 16 : 8)
             }
@@ -226,9 +224,7 @@ struct ComposerView: View {
         .animation(.easeOut(duration: 0.18), value: expanded)
         .animation(.easeOut(duration: 0.25), value: focused)
         .offset(y: fullscreenOffset)
-        .allowsHitTesting(!changingFullscreen)
         .onDisappear { fullscreenTransition?.cancel() }
-
         .overlay(alignment: .bottom) {
             if pickerPresented {
                 PhotosPicker(selection: $pendingSelection, maxSelectionCount: max(1, 8 - session.attachments.count),
@@ -245,11 +241,10 @@ struct ComposerView: View {
                                 dismissGallery()
                             } label: {
                                 StudioIcon(.back)
-                                    .frame(width: 44, height: 44)
                             }
                             .glassEffect(.regular.interactive(), in: .circle)
                             .accessibilityLabel("Close photo gallery")
-                            .accessibilityIdentifier("closePhotoGallery")
+
                             Spacer()
                             Button {
                                 pickerPresented = false
@@ -265,7 +260,7 @@ struct ComposerView: View {
                                     .frame(height: 44)
                             }
                             .glassEffect((pendingSelection.isEmpty ? Glass.clear : Glass.clear.tint(Color(red: 0.02, green: 0.19, blue: 0.96))).interactive(), in: .capsule)
-                            .accessibilityIdentifier("confirmPhotos")
+
                         }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 24)
