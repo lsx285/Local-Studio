@@ -13,5 +13,7 @@ with zipfile.ZipFile(sys.argv[1]) as ipa:
     assert info['DTSDKName'] == 'iphoneos27.2', info.get('DTSDKName')
     assert float(info['MinimumOSVersion']) >= 27
     assert any(p.endswith('.car') for p in paths), 'Compiled icon/assets missing'
+    motion = ipa.read(prefix + 'GenerationMotion.dots')
+    assert motion.startswith(b'LSDOTS01') and len(motion) == 807856, 'Generation motion trace missing or invalid'
     assert ipa.testzip() is None, 'Corrupt IPA'
     print('Verified unsigned LocalStudio.ipa, iOS 27.2 SDK, Swift 6 project')

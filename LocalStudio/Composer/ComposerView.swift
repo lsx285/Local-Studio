@@ -42,6 +42,8 @@ struct ComposerView: View {
                     .padding(8)
                 }
                 .scrollIndicators(.hidden)
+                .clipped()
+                .accessibilityIdentifier("attachmentRail")
             }
             if expanded {
                 TextField("Ask Local Studio", text: $session.draft, axis: .vertical)
@@ -80,10 +82,23 @@ struct ComposerView: View {
                 Button {
                     if session.isGenerating { session.cancelGeneration() } else { send() }
                 } label: {
-                    Image(systemName: session.isGenerating ? "stop.fill" : "arrow.up")
-                        .font(.system(size: session.isGenerating ? 14 : 23, weight: .semibold))
-                        .frame(width: 32, height: 32)
-                        .background(StudioPalette.accent, in: .circle)
+                    ZStack {
+                        Circle().fill(StudioPalette.accent)
+                        if session.isGenerating {
+                            RoundedRectangle(cornerRadius: 1.5).fill(.white)
+                                .frame(width: 11, height: 11)
+                        } else {
+                            Path { path in
+                                path.move(to: CGPoint(x: 16, y: 22.5))
+                                path.addLine(to: CGPoint(x: 16, y: 10))
+                                path.move(to: CGPoint(x: 10.5, y: 15.5))
+                                path.addLine(to: CGPoint(x: 16, y: 10))
+                                path.addLine(to: CGPoint(x: 21.5, y: 15.5))
+                            }
+                            .stroke(.white, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                        }
+                    }
+                    .frame(width: 32, height: 32)
                 }
                 .disabled(!session.isGenerating && !session.canSend)
                 .opacity(session.isGenerating || session.canSend ? 1 : 0.5)
@@ -95,6 +110,7 @@ struct ComposerView: View {
         }
         .foregroundStyle(.white)
         .glassEffect(.regular, in: .rect(cornerRadius: expanded || !session.attachments.isEmpty ? 28 : 26))
+        .clipShape(.rect(cornerRadius: expanded || !session.attachments.isEmpty ? 28 : 26))
         .padding(.horizontal, expanded ? 12 : 34)
         .animation(.spring(response: 0.3, dampingFraction: 0.9), value: expanded)
         .overlay(alignment: .bottom) {

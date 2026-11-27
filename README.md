@@ -6,7 +6,7 @@ The interface follows measured 430 × 932 pt references: black canvas, native Li
 
 Normal conversations stay on the iPhone using an atomically written, file-protected archive. Temporary conversations stay in memory and disappear after process termination. New chat deletes the current conversation. Long-press a prompt to copy, edit, select, or share it. The plus opens Apple's inline Photos grid in a rounded gallery panel, with up to eight ordered photos and floating back/confirmation controls. All Photos opens the full system browser. The overflow menu reserves space for future settings.
 
-**Frontend preview:** text replies and the 22-second generation sequence are simulated. Image requests show a bundled duck fixture cropped from the supplied reference. No image is actually generated or edited. This fixture and the app's original cursive-L vector icon are the only artwork bundled; personal screenshots and recordings are not published.
+**Frontend preview:** text replies and the 24-second generation sequence are simulated. Image requests show a bundled duck fixture cropped from the supplied reference. No image is actually generated or edited. The generation field renders 660 vector dots using a compact trace of measured radii and colors from the reference recording, interpolated at 30 fps. Personal screenshots, video frames, and audio are not published.
 
 ## Build and download
 

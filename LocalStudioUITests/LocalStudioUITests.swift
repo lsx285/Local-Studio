@@ -71,6 +71,21 @@ final class LocalStudioUITests: XCTestCase {
             app.launch()
             XCTAssertTrue(app.buttons["addPhotos"].waitForExistence(timeout: 5))
             capture("reference-\(scene)")
+            if scene == "attachments" || scene == "attachments-long" {
+                app.scrollViews["attachmentRail"].swipeLeft()
+                capture("reference-\(scene)-scrolled")
+            }
+        }
+    }
+
+    func testGenerationReferencePhases() {
+        for offset in [3, 8, 18, 22] {
+            app.terminate()
+            app.launchEnvironment["LOCAL_STUDIO_PREVIEW"] = "generation"
+            app.launchEnvironment["LOCAL_STUDIO_GENERATION_OFFSET"] = String(offset)
+            app.launch()
+            XCTAssertTrue(app.otherElements["generation"].waitForExistence(timeout: 5))
+            capture("reference-generation-\(offset)")
         }
     }
 

@@ -35,7 +35,8 @@ final class ChatSession {
             messages = [ChatMessage(role: .user, text: "Hello"), ChatMessage(role: .assistant, text: "Hello! 😊 Lovely to have you here. How’s your day going?")]
         case "generation":
             messages = [ChatMessage(role: .user, text: "Generate an image of a pond with various animals residing in it")]
-            generationStarted = .now.addingTimeInterval(-10)
+            let offset = Double(ProcessInfo.processInfo.environment["LOCAL_STUDIO_GENERATION_OFFSET"] ?? "10") ?? 10
+            generationStarted = .now.addingTimeInterval(-offset)
             isGenerating = true
         default: break
         }
@@ -94,7 +95,7 @@ final class ChatSession {
         let imageRequest = ["image", "draw", "generate", "background", "edit"].contains { prompt.localizedCaseInsensitiveContains($0) }
         generationTask = Task { [weak self] in
             do {
-                try await Task.sleep(for: .seconds(imageRequest ? 22 : 0.8))
+                try await Task.sleep(for: .seconds(imageRequest ? 24 : 0.8))
                 guard let self else { return }
                 var resultPhotos: [PhotoAttachment] = []
                 let response: String
