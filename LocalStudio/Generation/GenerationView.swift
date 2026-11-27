@@ -4,9 +4,19 @@ struct GenerationView: View {
     let startedAt: Date
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    private var referenceTime: Double? {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing"),
+           let value = ProcessInfo.processInfo.environment["LOCAL_STUDIO_GENERATION_OFFSET"] {
+            return Double(value)
+        }
+        #endif
+        return nil
+    }
+
     var body: some View {
-        TimelineView(.animation(minimumInterval: reduceMotion ? 1 : 1 / 30)) { timeline in
-            let elapsed = max(0, timeline.date.timeIntervalSince(startedAt))
+        TimelineView(.animation(minimumInterval: reduceMotion ? 1 : 1 / 30, paused: referenceTime != nil)) { timeline in
+            let elapsed = referenceTime ?? max(0, timeline.date.timeIntervalSince(startedAt))
             let progress = GenerationMotion.progress(at: elapsed)
             Group {
                 if elapsed < 2.8 {

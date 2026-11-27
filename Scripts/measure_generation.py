@@ -36,6 +36,9 @@ while True:
         raise RuntimeError('Incomplete reference frame')
     image = np.frombuffer(raw, dtype=np.uint8).reshape(height, width, 3)
     patches = image[sample_y, sample_x].reshape(columns * rows, -1, 3).astype(np.float32)
+    # Ignore the gray progress badge and white digits where they occlude the grid.
+    chromatic = patches[:, :, 2] > np.maximum(patches[:, :, 0], patches[:, :, 1]) * 1.25 + 2
+    patches = np.where(chromatic[:, :, None], patches, 0)
     blue = patches[:, :, 2]
     brightest = np.argpartition(blue, -4, axis=1)[:, -4:]
     colors = np.take_along_axis(patches, brightest[:, :, None], axis=1).mean(axis=1)
