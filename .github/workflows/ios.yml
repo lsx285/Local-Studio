@@ -1,0 +1,74 @@
+name: iOS · unsigned IPA
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Swift 6 · iOS 27.2
+    runs-on: xcode-27
+    timeout-minutes: 35
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Verify stable toolchain
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcrun swift --version
+          test "$(xcrun --sdk iphoneos --show-sdk-version)" = "27.2"
+      - name: Build unsigned device app
+        run: |
+          set -euo pipefail
+          xcodebuild -project LocalStudio.xcodeproj -scheme LocalStudio \
+            -configuration Release -sdk iphoneos27.2 -destination 'generic/platform=iOS' \
+            -derivedDataPath build/device CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO build
+          mkdir -p build/Payload
+          ditto build/device/Build/Products/Release-iphoneos/LocalStudio.app build/Payload/LocalStudio.app
+          test ! -d build/Payload/LocalStudio.app/_CodeSignature
+          test ! -f build/Payload/LocalStudio.app/embedded.mobileprovision
+          ditto -c -k --keepParent build/Payload build/LocalStudio.ipa
+          python3 Scripts/validate_ipa.py build/LocalStudio.ipa
+      - name: Upload IPA directly
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: build/LocalStudio.ipa
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+      - name: Select reference-sized simulator
+        id: simulator
+        run: |
+          set -euo pipefail
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; devices=json.load(sys.stdin)["devices"]; candidates=[d for r,ds in devices.items() if "iOS-27-2" in r for d in ds if "Pro Max" in d["name"]]; print(candidates[0]["udid"])')
+          echo "id=$DEVICE" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$DEVICE" || true
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl status_bar "$DEVICE" override --time '1:54' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
+          xcrun simctl addmedia "$DEVICE" LocalStudio/Resources/DemoArtwork.jpg
+      - name: Exercise frontend and capture screenshots
+        run: |
+          set -euo pipefail
+          xcodebuild -project LocalStudio.xcodeproj -scheme LocalStudio \
+            -configuration Debug -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.id }}' \
+            -derivedDataPath build/simulator -resultBundlePath build/VisualReview.xcresult \
+            CODE_SIGNING_ALLOWED=NO test
+      - name: Export visual review to workflow log
+        if: always()
+        run: |
+          if [ -d build/VisualReview.xcresult ]; then
+            xcrun xcresulttool export attachments --path build/VisualReview.xcresult --output-path build/screenshots
+            python3 Scripts/print_visual_review.py build/screenshots
+          fi
