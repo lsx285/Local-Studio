@@ -86,7 +86,9 @@ final class LocalStudioUITests: XCTestCase {
     }
 
     func testGenerationReferencePhases() {
-        for offset in ["2", "3", "6.5", "11.5", "16.4", "16.8", "17.1", "17.3", "17.5"] {
+        let offsets = [2.0, 3, 5, 6.5, 8, 11.5, 14, 16.4, 16.5] + stride(from: 16.6, through: 17.7, by: 0.05).map { $0 }
+        for time in offsets {
+            let offset = String(format: "%.2f", time)
             app.terminate()
             app.launchEnvironment["LOCAL_STUDIO_PREVIEW"] = "generation"
             app.launchEnvironment["LOCAL_STUDIO_GENERATION_OFFSET"] = offset

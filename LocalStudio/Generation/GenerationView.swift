@@ -20,25 +20,22 @@ struct GenerationView: View {
             let elapsed = referenceTime ?? max(0, timeline.date.timeIntervalSince(startedAt))
             let progress = GenerationMotion.progress(at: elapsed)
             let stage = elapsed < 6.45 ? "Sketching it out" : elapsed < 10.95 ? "Making the first draft" : elapsed < 14.95 ? "Setting the scene" : "Polishing details"
-            let reveal = reduceMotion ? 0 : min(1, max(0, (elapsed - 16.6) / 0.95))
-            let contraction = min(1, reveal / 0.5)
-            let eased = contraction * contraction * (3 - 2 * contraction)
-            let fieldWidth = 300 + (availableWidth - 300) * eased
-            let fieldHeight = 400 + (availableWidth / 1.5 - 400) * eased
             Group {
-                if elapsed < 1.85 {
+                if elapsed >= 16.6 && !reduceMotion {
+                    GenerationRevealView(elapsed: elapsed, width: availableWidth)
+                } else if elapsed < 1.85 {
                     Circle().fill(StudioPalette.accent)
                         .frame(width: 17, height: 17)
                         .scaleEffect(reduceMotion ? 1 : 0.6 + 0.4 * (0.5 + 0.5 * cos(elapsed * 2 * .pi / 1.1)))
                         .frame(width: 300, alignment: .leading)
                 } else {
-                    VStack(alignment: .leading, spacing: 8 * (1 - min(1, reveal * 5))) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text(stage)
                             .font(.system(size: 17))
                             .lineLimit(1)
                             .foregroundStyle(GenerationMotion.labelGradient(at: elapsed, text: stage, reduceMotion: reduceMotion))
-                            .frame(height: 21 * (1 - min(1, reveal * 5)), alignment: .leading)
-                            .opacity(1 - min(1, reveal * 5))
+                            .frame(height: 21, alignment: .leading)
+                            .opacity(reduceMotion ? 1 : min(1, max(0, (16.61 - elapsed) / 0.05)))
                         Canvas { context, _ in
                             let position = min(Double(GenerationMotion.frameCount - 1), max(0, ((reduceMotion ? 12 : elapsed) - 1.85) * 59))
                             let first = Int(position)
@@ -55,37 +52,15 @@ struct GenerationView: View {
                                     let red = (Double(GenerationMotion.samples[offset + 1]) * (1 - blend) + Double(GenerationMotion.samples[next + 1]) * blend) / 255
                                     let green = (Double(GenerationMotion.samples[offset + 2]) * (1 - blend) + Double(GenerationMotion.samples[next + 2]) * blend) / 255
                                     let blue = (Double(GenerationMotion.samples[offset + 3]) * (1 - blend) + Double(GenerationMotion.samples[next + 3]) * blend) / 255
-                                    let x = (10.63 + Double(column) * 13.318) * fieldWidth / 300
-                                    let y = (4.4 + Double(row) * 13.318) * fieldHeight / 400
+                                    let x = (10.63 + Double(column) * 13.318)
+                                    let y = (9.18 + Double(row) * 13.318)
                                     let rect = CGRect(x: x - radius, y: y - radius,
                                                       width: radius * 2, height: radius * 2)
-                                    context.fill(Path(ellipseIn: rect), with: .color(Color(.sRGB, red: red, green: green, blue: blue).opacity(1 - min(1, max(0, (reveal - 0.5) * 3)))))
+                                    context.fill(Path(ellipseIn: rect), with: .color(Color(.sRGB, red: red, green: green, blue: blue)))
                                 }
                             }
                         }
-                        .frame(width: fieldWidth, height: fieldHeight)
-                        .overlay {
-                            if reveal > 0.48, let artwork = GenerationMotion.artwork {
-                                Image(uiImage: artwork).resizable().scaledToFill()
-                                    .frame(width: fieldWidth, height: fieldHeight).clipped()
-                                    .mask {
-                                        Canvas { context, size in
-                                            for row in 0..<30 {
-                                                for column in 0..<22 {
-                                                    let delay = Double(column) * 0.003 + Double(row) * 0.0015
-                                                    let phase = min(1, max(0, (reveal - 0.48 - delay) / 0.38))
-                                                    let x = size.width * (CGFloat(column) + 0.5) / 22
-                                                    let y = size.height * (CGFloat(row) + 0.5) / 30
-                                                    let w = 2 + (size.width / 22 - 1) * pow(phase, 2.5)
-                                                    let h = 2 + (size.height / 30 + 1) * min(1, phase * 2)
-                                                    guard phase > 0 else { continue }
-                                                    context.fill(Path(roundedRect: CGRect(x: x - w / 2, y: y - h / 2, width: w, height: h), cornerRadius: 2 * (1 - phase)), with: .color(.white.opacity(phase)))
-                                                }
-                                            }
-                                        }
-                                    }
-                            }
-                        }
+                        .frame(width: 300, height: 400)
                         .clipShape(.rect(cornerRadius: 16))
                         .overlay(alignment: .bottomTrailing) {
                             Text("\(progress) %")
@@ -94,7 +69,7 @@ struct GenerationView: View {
                                 .padding(.horizontal, 12).padding(.vertical, 8)
                                 .glassEffect(.regular, in: .capsule)
                                 .padding(20)
-                                .opacity(1 - min(1, reveal * 5))
+                                .opacity(reduceMotion ? 1 : min(1, max(0, (16.61 - elapsed) / 0.05)))
                         }
                     }
                 }

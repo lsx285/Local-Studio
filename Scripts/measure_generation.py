@@ -18,7 +18,7 @@ while True:
  patches=np.where(chroma[:,:,None],patches,0)
  blue=patches[:,:,2]; best=np.argpartition(blue,-4,axis=1)[:,-4:]
  colors=np.take_along_axis(patches,best[:,:,None],axis=1).mean(axis=1)
- areas=np.maximum(blue-4,0).sum(axis=1)/np.maximum(colors[:,2]-4,1)
+ areas=blue.sum(axis=1)/np.maximum(colors[:,2],1)
  rad=np.sqrt(areas/math.pi)*430/720; rad[colors[:,2]<9]=0
  enc=np.empty((660,4),np.uint8); enc[:,0]=np.clip(np.rint(rad*64),0,255); enc[:,1:]=np.clip(np.rint(colors),0,255)
  gray=im[:40].min(axis=2).max(axis=0).astype(float); valid=np.where(gray>22)[0]

@@ -106,7 +106,7 @@ final class ChatSession {
         let imageRequest = ["image", "draw", "generate", "background", "edit"].contains { prompt.localizedCaseInsensitiveContains($0) }
         generationTask = Task { [weak self] in
             do {
-                try await Task.sleep(for: .seconds(imageRequest ? 17.55 : 0.8))
+                try await Task.sleep(for: .seconds(imageRequest ? 17.7 : 0.8))
                 guard let self else { return }
                 var resultPhotos: [PhotoAttachment] = []
                 let response: String

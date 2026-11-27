@@ -52,7 +52,7 @@ jobs:
   generation-review:
     name: Artwork generation only
     runs-on: xcode-27
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
     steps:
@@ -69,3 +69,16 @@ jobs:
             -derivedDataPath build/generation -resultBundlePath build/GenerationReview.xcresult \
             -only-testing:LocalStudioUITests/LocalStudioUITests/testGenerationReferencePhases \
             -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test
+
+      - name: Export generation screenshots
+        if: always()
+        run: |
+          xcrun xcresulttool export attachments --path build/GenerationReview.xcresult --output-path build/GenerationScreenshots
+      - name: Upload generation screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: GenerationScreenshots
+          path: build/GenerationScreenshots
+          if-no-files-found: warn
+          retention-days: 7
