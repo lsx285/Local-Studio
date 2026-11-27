@@ -63,6 +63,17 @@ final class ChatSession {
             editingMessageID = nil
         }
         persist()
+        generate(prompt: prompt, photos: photos)
+    }
+
+    func retry(_ message: ChatMessage) {
+        guard !isGenerating, message.role == .assistant,
+              let index = messages.firstIndex(where: { $0.id == message.id }),
+              let prompt = messages[..<index].last(where: { $0.role == .user }) else { return }
+        generate(prompt: prompt.text, photos: prompt.attachments, replacing: message.id)
+    }
+
+    private func generate(prompt: String, photos: [PhotoAttachment], replacing messageID: UUID? = nil) {
         generationStarted = .now
         isGenerating = true
         let imageRequest = ["image", "draw", "generate", "background", "edit"].contains { prompt.localizedCaseInsensitiveContains($0) }
@@ -87,7 +98,11 @@ final class ChatSession {
                 }
                 withAnimation(imageRequest ? nil : .easeOut(duration: 0.35)) {
                     self.isGenerating = false
-                    self.messages.append(ChatMessage(role: .assistant, text: response, attachments: resultPhotos))
+                    if let messageID, let index = self.messages.firstIndex(where: { $0.id == messageID }) {
+                        self.messages[index] = ChatMessage(id: messageID, role: .assistant, text: response, attachments: resultPhotos)
+                    } else {
+                        self.messages.append(ChatMessage(role: .assistant, text: response, attachments: resultPhotos))
+                    }
                 }
                 self.persist()
             } catch { /* Cancellation is an intentional stop or new conversation. */ }

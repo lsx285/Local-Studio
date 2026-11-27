@@ -4,6 +4,8 @@ import Photos
 
 struct MessageView: View {
     let message: ChatMessage
+    let canRetry: Bool
+    let retryResponse: (ChatMessage) -> Void
     let editPrompt: (ChatMessage) -> Void
     @State private var speech: AVSpeechSynthesizer?
     @State private var photoError: String?
@@ -102,21 +104,12 @@ struct MessageView: View {
 
                     }
                 } else {
-                    Group {
-                        if selectingText {
-                            InlineMessageSelection(text: message.text, color: .white, active: $selectingText)
-                                .frame(width: textSize.width, height: textSize.height)
-                        } else {
-                            Text(message.text)
-                                .font(.system(size: 17))
-                                .lineSpacing(3)
-                                .foregroundStyle(.white)
-                                .textSelection(.enabled)
-                                .onGeometryChange(for: CGSize.self) { $0.size } action: { textSize = $0 }
-                        }
-                    }
+                    Text(message.text)
+                        .font(.system(size: 17))
+                        .lineSpacing(3)
+                        .foregroundStyle(.white)
+                        .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
-
                 }
             }
             if message.role == .assistant {
@@ -141,10 +134,15 @@ struct MessageView: View {
                         .accessibilityLabel("Share artwork")
                     }
                     Menu {
-                        if !message.text.isEmpty {
-                            Button { selectingText = true } label: { Label { Text("Select text") } icon: { StudioIcon(.selectText) } }
+                        Section {
+                            Button { retryResponse(message) } label: {
+                                Label { Text("Retry") } icon: { StudioIcon(.retry) }
+                            }
+                            .disabled(!canRetry)
+                        } header: {
+                            Text("Used Local Model")
+                                .font(.system(size: 13, weight: .medium))
                         }
-                        Text("Frontend preview · local models coming later")
                     } label: { StudioIcon(.moreAction) }
                         .accessibilityLabel("Response options")
                 }

@@ -10,6 +10,7 @@ struct ChatView: View {
     @State private var composerFocused = false
     @State private var composerFullScreen = false
     @State private var composerTransitioning = false
+    @State private var settingsPresented = false
     @State private var endVisible = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -26,7 +27,7 @@ struct ChatView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 32) {
                         ForEach(session.messages) { message in
-                            MessageView(message: message) { message in
+                            MessageView(message: message, canRetry: !session.isGenerating, retryResponse: session.retry) { message in
                                 session.edit(message)
                                 composerFocused = true
                             }
@@ -96,7 +97,17 @@ struct ChatView: View {
                                     .accessibilityLabel("New chat")
 
                                     Menu {
-                                        Text(session.isTemporary ? "Temporary chat" : "Local Studio")
+                                        Section {
+                                            Button {
+                                                composerFocused = false
+                                                settingsPresented = true
+                                            } label: {
+                                                Label { Text("Settings") } icon: { StudioIcon(.settings) }
+                                            }
+                                        } header: {
+                                            Text("Local Studio \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0")")
+                                                .font(.system(size: 13, weight: .medium))
+                                        }
                                     } label: {
                                         StudioIcon(.moreHeader)
                                     }
@@ -152,6 +163,12 @@ struct ChatView: View {
                 }
             }
             .task { await session.restore() }
+            .sheet(isPresented: $settingsPresented) {
+                Color(uiColor: .systemBackground)
+                    .ignoresSafeArea()
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
                 let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect ?? .zero
                 let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25

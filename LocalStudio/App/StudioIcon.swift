@@ -6,6 +6,7 @@ enum StudioGlyph: String {
     case copy, edit, selectText, share, save, close
     case copyAction, speaker, shareAction, moreAction
     case upArrow, downArrow, expand, collapse, back, stop
+    case retry, settings
 
     var size: CGFloat {
         switch self {
