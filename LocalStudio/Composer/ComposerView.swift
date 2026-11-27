@@ -127,8 +127,7 @@ struct ComposerView: View {
         }
         .foregroundStyle(.white)
         .background {
-            if fullScreen { Color(white: 30 / 255) }
-            else {
+            if !fullScreen {
                 Color.clear.glassEffect(.regular, in: .rect(cornerRadius: expanded || !session.attachments.isEmpty ? 28 : 26))
             }
         }
@@ -136,6 +135,16 @@ struct ComposerView: View {
                          bottomLeadingRadius: fullScreen ? 0 : expanded || !session.attachments.isEmpty ? 28 : 26,
                          bottomTrailingRadius: fullScreen ? 0 : expanded || !session.attachments.isEmpty ? 28 : 26,
                          topTrailingRadius: fullScreen ? 40 : expanded || !session.attachments.isEmpty ? 28 : 26))
+        .background {
+            if fullScreen {
+                // Extend only the backdrop below the keyboard and home indicator.
+                // Applied after clipping so the editor keeps its keyboard-aware bounds.
+                UnevenRoundedRectangle(topLeadingRadius: 40, topTrailingRadius: 40)
+                    .fill(StudioPalette.fullscreenComposer)
+                    .ignoresSafeArea(.all, edges: .bottom)
+                    .allowsHitTesting(false)
+            }
+        }
         .overlay(alignment: .topTrailing) {
             if showsExpansionControl {
                 Button {
