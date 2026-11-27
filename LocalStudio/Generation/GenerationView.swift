@@ -28,12 +28,13 @@ struct GenerationView: View {
                         Text(progress < 35 ? "Sketching it out" : progress < 55 ? "Making the first draft" : progress < 72 ? "Setting the scene" : progress < 90 ? "Polishing details" : "Finishing up")
                             .font(.system(size: 17))
                             .foregroundStyle(Color(white: 0.52))
+                            .opacity(reduceMotion ? 1 : min(1, max(0, (23 - elapsed) / 0.2)))
                         Canvas { context, _ in
                             let position = min(Double(GenerationMotion.frameCount - 1), max(0, ((reduceMotion ? 18 : elapsed) - 2.8) * 15))
                             let first = Int(position)
                             let second = min(first + 1, GenerationMotion.frameCount - 1)
                             let blend = position - Double(first)
-                            let reveal = reduceMotion ? 0 : min(1, max(0, elapsed - 23.2) / 0.8)
+                            let reveal = reduceMotion ? 0 : min(1, max(0, elapsed - 23) / 1)
                             for row in 0..<30 {
                                 for column in 0..<22 {
                                     let dot = row * 22 + column
@@ -62,6 +63,7 @@ struct GenerationView: View {
                                 .padding(.horizontal, 12).padding(.vertical, 8)
                                 .glassEffect(.regular, in: .capsule)
                                 .padding(20)
+                                .opacity(reduceMotion ? 1 : min(1, max(0, (23 - elapsed) / 0.2)))
                         }
                     }
                 }
@@ -85,10 +87,10 @@ private enum GenerationMotion {
     }()
     static let frameCount = (samples.count - 16) / 2640
     static let markers: [(Double, Double)] = [
-        (2.8, 0), (3, 10), (4, 26), (5, 30), (6, 34), (7, 37), (8, 39),
-        (9, 45), (10, 48), (11, 52), (12, 55), (13, 59), (14, 64),
-        (15, 69), (16, 74), (17, 79), (18, 81), (19, 88), (20, 90),
-        (21, 93), (22, 95), (24, 95)
+        (2.8, 0), (3, 8), (3.5, 10), (4, 13), (4.5, 26), (5, 29),
+        (6, 32), (7, 35), (8, 39), (9, 42), (10, 46), (11, 50),
+        (12, 53), (13, 57), (14, 62), (15, 66), (16, 72), (17, 76),
+        (18, 81), (19, 86), (20, 89), (21, 91), (22, 94), (22.8, 95), (24, 95)
     ]
 
     static func progress(at elapsed: Double) -> Int {
