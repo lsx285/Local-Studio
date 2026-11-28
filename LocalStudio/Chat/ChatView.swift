@@ -17,8 +17,10 @@ struct ChatView: View {
     @State private var endVisible = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// While the composer is full screen or changing size, the conversation beneath it holds still.
+    private var composerCoversConversation: Bool { composerFullScreen || composerTransitioning }
     private var showsScrollButton: Bool {
-        !composerFullScreen && !composerTransitioning && !endVisible && !followsBottom && farFromBottom && !session.messages.isEmpty
+        !composerCoversConversation && !endVisible && !followsBottom && farFromBottom && !session.messages.isEmpty
     }
 
     private func openArtwork(_ id: UUID) {
@@ -41,7 +43,7 @@ struct ChatView: View {
                         ForEach(session.messages.filter { !$0.text.isEmpty || !$0.attachments.isEmpty || $0.id == session.respondingMessageID }) { message in
                             if !message.text.isEmpty || !message.attachments.isEmpty {
                                 MessageView(message: message, isResponding: session.respondingMessageID == message.id, availableWidth: max(1, width - 32), openArtwork: openArtwork, reportArtworkFrame: { imageFrames.values[$0] = $1 }, editArtwork: { photo in
-                                    guard session.attachments.count < 8, let attachment = PhotoAttachment(data: photo.data) else {
+                                    guard session.attachmentSlots > 0, let attachment = PhotoAttachment(data: photo.data) else {
                                         UINotificationFeedbackGenerator().notificationOccurred(.warning)
                                         return
                                     }
@@ -68,7 +70,7 @@ struct ChatView: View {
                         }
                         Color.clear.frame(height: 1).id("bottom")
                             .onScrollVisibilityChange(threshold: 0.1) { visible in
-                                guard !composerFullScreen && !composerTransitioning else { return }
+                                guard !composerCoversConversation else { return }
                                 if endVisible != visible { endVisible = visible }
                                 if visible {
                                     if !followsBottom { followsBottom = true }
@@ -87,8 +89,8 @@ struct ChatView: View {
                 // Growing content (streamed text, new rows, keyboard) keeps the bottom in view while following;
                 // otherwise the reader's position stays put.
                 .defaultScrollAnchor(followsBottom ? .bottom : .top, for: .sizeChanges)
-                .scrollDismissesKeyboard(composerFullScreen || composerTransitioning ? .never : .interactively)
-                .scrollDisabled(composerFullScreen || composerTransitioning)
+                .scrollDismissesKeyboard(composerCoversConversation ? .never : .interactively)
+                .scrollDisabled(composerCoversConversation)
                 .onScrollPhaseChange { _, phase in
                     let scrolling = phase == .tracking || phase == .interacting || phase == .decelerating
                     if isUserScrolling != scrolling { isUserScrolling = scrolling }
@@ -99,7 +101,7 @@ struct ChatView: View {
                         canScroll: geometry.contentSize.height + geometry.contentInsets.top + geometry.contentInsets.bottom
                                    > geometry.containerSize.height + 1)
                 } action: { _, value in
-                    guard !composerFullScreen && !composerTransitioning else { return }
+                    guard !composerCoversConversation else { return }
                     // Only write state when it changes: this runs on every scroll frame, and each
                     // write re-renders the conversation.
                     let far = value.distance > 24
@@ -224,13 +226,13 @@ struct ChatView: View {
                 }
                 .onChange(of: session.messages.count) {
                     if session.messages.isEmpty { followsBottom = true }
-                    if followsBottom && !composerFullScreen && !composerTransitioning { withAnimation(reduceMotion ? nil : .smooth) { scrollPosition.scrollTo(edge: .bottom) } }
+                    if followsBottom && !composerCoversConversation { withAnimation(reduceMotion ? nil : .smooth) { scrollPosition.scrollTo(edge: .bottom) } }
                 }
             }
             .overlay {
                 if let viewer {
                     ArtworkViewer(request: viewer, sourceFrames: imageFrames.values, edit: { photo in
-                        if session.attachments.count < 8, let attachment = PhotoAttachment(data: photo.data) { session.attachments.append(attachment) }
+                        if session.attachmentSlots > 0, let attachment = PhotoAttachment(data: photo.data) { session.attachments.append(attachment) }
                         else { UINotificationFeedbackGenerator().notificationOccurred(.warning) }
                         composerFocused = true
                     }, remove: { id in
@@ -250,13 +252,13 @@ struct ChatView: View {
                 let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect ?? .zero
                 let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
                 withAnimation(reduceMotion ? nil : .easeOut(duration: duration)) { keyboardVisible = frame.height > 100 }
-                if followsBottom && !composerFullScreen && !composerTransitioning { scrollPosition.scrollTo(edge: .bottom) }
+                if followsBottom && !composerCoversConversation { scrollPosition.scrollTo(edge: .bottom) }
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
                     keyboardVisible = false
                 }
-                if followsBottom && !composerFullScreen && !composerTransitioning { scrollPosition.scrollTo(edge: .bottom) }
+                if followsBottom && !composerCoversConversation { scrollPosition.scrollTo(edge: .bottom) }
             }
             .alert("Storage unavailable", isPresented: Binding(get: { session.storageError != nil }, set: { if !$0 { session.storageError = nil } })) {
                 Button("OK") { session.storageError = nil }

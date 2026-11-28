@@ -55,7 +55,7 @@ struct ComposerView: View {
 
     private func pasteImages(_ images: [Data]) {
         guard !loadingPhotos else { return }
-        for data in images.prefix(max(0, 8 - session.attachments.count)) {
+        for data in images.prefix(session.attachmentSlots) {
             guard let photo = PhotoAttachment(data: data) else {
                 photoError = true
                 continue
@@ -81,7 +81,7 @@ struct ComposerView: View {
             ? ComposerEditor.measuredHeight(text: draft, width: max(1, availableWidth - 56), reserve: showsExpansionControl) : 32
         let horizontalInset: CGFloat = fullScreen ? 0 : expanded || focused ? 12 : 34
         let canSend = session.canSend
-        let showsEnhance = session.isEnhancing || !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let showsEnhance = session.isEnhancing || session.hasPrompt
         let showsSend = session.isGenerating || canSend
         VStack(spacing: 0) {
             HStack(spacing: 12) {
@@ -172,7 +172,7 @@ struct ComposerView: View {
                 ComposerEditor(text: $session.draft, focused: $focused, expanded: expanded, overflowing: !fullScreen && overflowing,
                                fullScreen: fullScreen, transitioning: changingFullscreen,
                                showsExpansionControl: showsExpansionControl && !fullScreen,
-                               pasteImageLimit: loadingPhotos ? 0 : max(0, 8 - session.attachments.count), pasteImages: pasteImages)
+                               pasteImageLimit: loadingPhotos ? 0 : session.attachmentSlots, pasteImages: pasteImages)
                     .frame(height: fullScreen ? max(100, availableHeight - 194) : inlineEditorHeight)
                     .onGeometryChange(for: CGRect.self) { geometry in
                         geometry.frame(in: .named("composerGestures"))
@@ -195,7 +195,7 @@ struct ComposerView: View {
                                 StudioIcon(.plus)
                             }
                         }
-                        .disabled(loadingPhotos || session.attachments.count >= 8)
+                        .disabled(loadingPhotos || session.attachmentSlots == 0)
                         .accessibilityLabel("Add photos")
 
                     }
@@ -266,7 +266,7 @@ struct ComposerView: View {
         .animation(.easeOut(duration: 0.25), value: focused)
         .overlay(alignment: .bottom) {
             if pickerPresented {
-                PhotosPicker(selection: $pendingSelection, maxSelectionCount: max(1, 8 - session.attachments.count),
+                PhotosPicker(selection: $pendingSelection, maxSelectionCount: max(1, session.attachmentSlots),
                              selectionBehavior: .continuousAndOrdered, matching: .images, preferredItemEncoding: .current) { EmptyView() }
                     .photosPickerStyle(.inline)
                     .photosPickerAccessoryVisibility(.hidden)
@@ -331,7 +331,7 @@ struct ComposerView: View {
             pendingSelection = []
         }
         .photosPicker(isPresented: $fullPickerPresented, selection: $selection,
-                      maxSelectionCount: max(1, 8 - session.attachments.count), selectionBehavior: .ordered, matching: .images, preferredItemEncoding: .current)
+                      maxSelectionCount: max(1, session.attachmentSlots), selectionBehavior: .ordered, matching: .images, preferredItemEncoding: .current)
         .task(id: selection) {
             guard !selection.isEmpty else { return }
             loadingPhotos = true
@@ -340,7 +340,7 @@ struct ComposerView: View {
                 guard !Task.isCancelled else { return }
                 do {
                     if let data = try await item.loadTransferable(type: Data.self),
-                       let photo = PhotoAttachment(data: data), session.attachments.count < 8 {
+                       let photo = PhotoAttachment(data: data), session.attachmentSlots > 0 {
                         session.attachments.append(photo)
                     } else { photoError = true }
                 } catch { photoError = true }

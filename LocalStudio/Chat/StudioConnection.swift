@@ -16,8 +16,7 @@ struct StudioModel: Decodable, Identifiable, Sendable {
     let scheduler: String
 
     var capability: String {
-        if id == "qwen-chat" { return "Text chat and prompt enhancement" }
-        if family == "chat" { return "Image chat and visual prompts" }
+        if family == "chat" { return "Text chat and prompt enhancement" }
         return generation && editing ? "Generate and edit" : editing ? "Edit images" : "Generate images"
     }
 }

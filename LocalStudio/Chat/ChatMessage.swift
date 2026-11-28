@@ -50,6 +50,23 @@ struct ArchivedMessage: Codable, Sendable {
     let photos: [Photo]
     let createdAt: Date
     let metadata: GenerationMetadata?
+
+    init(_ message: ChatMessage) {
+        id = message.id
+        role = message.role
+        text = message.text
+        photos = message.attachments.map { Photo(id: $0.id, data: $0.data, filename: $0.filename) }
+        createdAt = message.createdAt
+        metadata = message.metadata
+    }
+}
+
+extension ChatMessage {
+    init(_ archived: ArchivedMessage) {
+        self.init(id: archived.id, role: archived.role, text: archived.text,
+                  attachments: archived.photos.compactMap { PhotoAttachment(id: $0.id, data: $0.data, filename: $0.filename) },
+                  createdAt: archived.createdAt, metadata: archived.metadata)
+    }
 }
 
 actor ConversationArchive {

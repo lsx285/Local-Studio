@@ -18,7 +18,7 @@ final class ChatSession {
     var maxTokens = 1024
     var isEnhancing = false
     var generationError: String?
-    var generationStage = "Queued on your PC..."
+    var generationStage = "Queued on your PC…"
     var generationProgress: Double?
     var isImageGeneration = false
     var selectedModel: StudioModel? { connection.models.first { $0.id == selectedModelID } }
@@ -40,17 +40,16 @@ final class ChatSession {
     private var generationTask: Task<Void, Never>?
     private var restored = false
 
+    var hasPrompt: Bool { !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    /// How many more photos the composer accepts.
+    var attachmentSlots: Int { max(0, 8 - attachments.count) }
     var canSend: Bool {
         guard connection.isConnected, let model = selectedModel, model.installed, !isEnhancing else { return false }
-        if model.family != "chat" {
-            if attachments.isEmpty && !model.generation { return false }
-            if !attachments.isEmpty && !model.editing { return false }
-        }
-        return !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
+        if model.family != "chat" && !(attachments.isEmpty ? model.generation : model.editing) { return false }
+        return hasPrompt || !attachments.isEmpty
     }
     var canEnhance: Bool {
-        connection.isConnected && selectedModel?.installed == true && !isGenerating && !isEnhancing &&
-        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        connection.isConnected && selectedModel?.installed == true && !isGenerating && !isEnhancing && hasPrompt
     }
 
     init() {
@@ -77,10 +76,7 @@ final class ChatSession {
         do { saved = try await ConversationArchive.shared.load() }
         catch { storageError = "Your saved conversation couldn’t be opened: \(error.localizedDescription)"; return }
         guard messages.isEmpty, !isTemporary, revision == 0 else { return }
-        messages = saved.map {
-            ChatMessage(id: $0.id, role: $0.role, text: $0.text,
-                        attachments: $0.photos.compactMap { PhotoAttachment(id: $0.id, data: $0.data, filename: $0.filename) }, createdAt: $0.createdAt, metadata: $0.metadata)
-        }
+        messages = saved.map(ChatMessage.init)
     }
 
     func newChat() {
@@ -136,7 +132,6 @@ final class ChatSession {
     private func generate(prompt: String, photos: [PhotoAttachment], modelID: String, replacing messageID: UUID? = nil,
                           width: Int, height: Int, maxTokens: Int) {
         let responseID = messageID ?? UUID()
-        let previous = messageID.flatMap { id in messages.first { $0.id == id } }
         let historyEnd = messageID.flatMap { id in messages.firstIndex { $0.id == id } } ?? messages.endIndex
         let history = messages[..<historyEnd].filter { $0.role == .user || !$0.text.isEmpty }.map { ["role": $0.role.rawValue, "text": $0.text] }
         isImageGeneration = connection.models.first { $0.id == modelID }?.family != "chat"
@@ -147,7 +142,7 @@ final class ChatSession {
             generationAspectRatio = Double(width) / Double(height)
         }
         generationStarted = .now
-        generationStage = "Queued on your PC..."
+        generationStage = "Queued on your PC…"
         generationProgress = nil
         isGenerating = true
         respondingMessageID = responseID
@@ -181,7 +176,7 @@ final class ChatSession {
                         self.messages[index].text = text
                         if !self.messages[index].attachments.isEmpty { self.messages[index].attachments = [] }
                     case .progress(let value, let total):
-                        let stage = image ? "Sampling image..." : "Writing..."
+                        let stage = image ? "Sampling image…" : "Writing…"
                         if self.generationStage != stage { self.generationStage = stage }
                         // Text generation shows no progress value, so per-token progress stays silent.
                         if image { self.generationProgress = total > 0 ? Double(value) / Double(total) : nil }
@@ -198,7 +193,7 @@ final class ChatSession {
                 completedResponses += 1
             } catch {
                 guard !Task.isCancelled else { return }
-                if let previous, let index = messages.firstIndex(where: { $0.id == responseID }) { messages[index] = previous }
+                if let original = retryOriginal, let index = messages.firstIndex(where: { $0.id == responseID }) { messages[index] = original }
                 messages.removeAll { $0.id == responseID && $0.text.isEmpty && $0.attachments.isEmpty }
                 if !(error is CancellationError) { generationError = error.localizedDescription }
             }
@@ -266,10 +261,7 @@ final class ChatSession {
         guard !isTemporary else { return }
         revision += 1
         let currentRevision = revision
-        let snapshot = messages.map {
-            ArchivedMessage(id: $0.id, role: $0.role, text: $0.text,
-                            photos: $0.attachments.map { .init(id: $0.id, data: $0.data, filename: $0.filename) }, createdAt: $0.createdAt, metadata: $0.metadata)
-        }
+        let snapshot = messages.map(ArchivedMessage.init)
         Task {
             do { try await ConversationArchive.shared.save(snapshot, revision: currentRevision) }
             catch { storageError = "Your conversation couldn’t be saved on this iPhone." }

@@ -12,11 +12,11 @@ struct GenerationView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var imageStage: String {
-        guard let progress else { return "Sketching it out" }
-        if progress < 0.3 { return "Sketching it out" }
-        if progress < 0.6 { return "Making the first draft" }
-        if progress < 0.85 { return "Setting the scene" }
-        return "Polishing details"
+        guard let progress, progress >= 0.2 else { return "Sketching it out" }
+        if progress < 0.4 { return "Making the first draft" }
+        if progress < 0.6 { return "Setting the scene" }
+        if progress < 0.8 { return "Polishing details" }
+        return "Finishing up"
     }
 
     var body: some View {
