@@ -104,7 +104,6 @@ struct ComposerEditor: UIViewRepresentable {
 
         func textViewDidChange(_ textView: UITextView) {
             let value = textView.text ?? ""
-            PasteDiagnostics.shared.record("Native editor change: textLength=\(value.utf16.count), attributedLength=\(textView.attributedText?.length ?? 0); forwarding String to composer")
             if parent.text != value { parent.text = value }
         }
         func textViewDidBeginEditing(_ textView: UITextView) { if !parent.focused { parent.focused = true } }
@@ -149,18 +148,13 @@ final class ComposerNativeTextView: UITextView {
         let nativeAllowed = super.canPerformAction(action, withSender: sender)
         let imagePaste = action == #selector(paste(_:)) && pasteImageLimit > 0 && receiveImages != nil && UIPasteboard.general.hasImages
         let allowed = nativeAllowed || imagePaste
-        if action == #selector(paste(_:)) {
-            PasteDiagnostics.shared.record("Paste menu eligibility=\(allowed), hasImages=\(UIPasteboard.general.hasImages), hasStrings=\(UIPasteboard.general.hasStrings), responder=\(isFirstResponder)")
-        }
         return allowed
     }
 
     override func paste(_ sender: Any?) {
         let board = UIPasteboard.general
-        PasteDiagnostics.shared.record("Paste invoked: items=\(board.numberOfItems), types=\(board.types.joined(separator: ",")), accepts=\(pasteConfiguration?.acceptableTypeIdentifiers.joined(separator: ",") ?? "nil"), textLength=\((text ?? "").utf16.count)")
         if board.hasImages {
             guard pasteImageLimit > 0, let receiveImages else {
-                PasteDiagnostics.shared.record("Image paste skipped: attachment limit reached or photo import busy")
                 return
             }
             // Prefer the clipboard's original encoded representation; only encode
@@ -178,17 +172,10 @@ final class ComposerNativeTextView: UITextView {
                 let images = board.images ?? board.image.map { [$0] } ?? []
                 data = images.prefix(pasteImageLimit).compactMap { $0.pngData() }
             }
-            PasteDiagnostics.shared.record("Clipboard image import: images=\(data.count), original representations=\(originals.count)")
             if !data.isEmpty { receiveImages(data) }
             return
         }
         super.paste(sender)
-        var attachments = 0
-        let contents = attributedText ?? NSAttributedString(string: "")
-        contents.enumerateAttribute(.attachment, in: NSRange(location: 0, length: contents.length)) { value, _, _ in
-            if value != nil { attachments += 1 }
-        }
-        PasteDiagnostics.shared.record("Native text paste returned: textLength=\((text ?? "").utf16.count), nativeAttachments=\(attachments)")
     }
 
     private let placeholder = UILabel()

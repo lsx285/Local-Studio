@@ -8,7 +8,7 @@ struct LocalStudioApp: App {
         WindowGroup {
             ChatView(session: session)
                 .preferredColorScheme(.dark)
-                .tint(StudioPalette.accent)
+                .tint(.white)
         }
     }
 }

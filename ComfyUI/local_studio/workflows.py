@@ -1,4 +1,7 @@
 import secrets
+import math
+
+from PIL import Image
 
 import folder_paths
 
@@ -93,17 +96,26 @@ def build_workflow(body):
     clip = node("clip", "CLIPLoader", clip_name=model["encoder"], type=model["clip_type"], device="default")
     vae = node("vae", "VAELoader", vae_name=model["vae"])
     width, height = int(body.get("width", 1024)), int(body.get("height", 1024))
+    reference_width, reference_height = width, height
+    if refs:
+        with Image.open(folder_paths.get_annotated_filepath(images[0])) as reference:
+            rw, rh = reference.size
+            if reference.getexif().get(274) in (5, 6, 7, 8):
+                rw, rh = rh, rw
+        ratio = rw / rh
+        reference_width = max(16, round(math.sqrt(width * height * ratio) / 16) * 16)
+        reference_height = max(16, round(math.sqrt(width * height / ratio) / 16) * 16)
     if model["family"] == "flux3":
         unet = node("sampling", "ModelSamplingFlux", model=unet, max_shift=model["shift"],
                     base_shift=model["shift"], width=width, height=height)
     negative_prompt = ""
     if model["family"] == "fibo":
         positive = node("encode", "TextEncodeFibo2", clip=clip, vae=vae, prompt=prompt, negative_prompt="",
-                        width=0 if refs else width, height=0 if refs else height, batch_size=1, **refs)
+                        width=reference_width, height=reference_height, batch_size=1, **refs)
         negative, latent = ["encode", 1], ["encode", 2]
     elif model["family"] == "qwen":
         positive = node("encode", "TextEncodeQwenImage21", clip=clip, vae=vae, prompt=prompt,
-                        negative_prompt="", resolution=1024, **refs)
+                        negative_prompt="", resolution=max(32, round(math.sqrt(width * height) / 32) * 32), **refs)
         negative = ["encode", 1]
         latent = ["encode", 2] if refs else node("latent", "EmptyLatentImage", width=width, height=height, batch_size=1)
     else:
@@ -114,7 +126,7 @@ def build_workflow(body):
         latent = node("latent", "EmptyFlux2LatentImage", width=width, height=height, batch_size=1)
         if refs:
             node("reference", "ReferenceMultiLatent", positive=positive, negative=negative, vae=vae,
-                 resolution="resize", **{"resolution.megapixels": 1.0},
+                 resolution="resize", **{"resolution.megapixels": width * height / (1024 * 1024)},
                  **{f"images.image{i}": value for i, value in enumerate(refs.values())})
             positive, negative, latent = ["reference", 0], ["reference", 1], ["reference", 2]
 
@@ -131,7 +143,10 @@ def build_workflow(body):
     decoded = node("decode", "VAEDecode", samples=samples, vae=vae)
     node("output", "SaveImage", images=decoded, filename_prefix="LocalStudio/" + model["id"])
     metadata = {key: model[key] for key in ("steps", "cfg", "sampler", "scheduler")}
-    metadata.update(model=model["name"], seed=seed, prompt=prompt, negative_prompt=negative_prompt)
+    metadata.update(model=model["name"], model_id=model["id"], seed=seed, prompt=prompt, negative_prompt=negative_prompt,
+                    diffusion_model=model["weights"], encoder=model["encoder"], vae=model["vae"])
+    if model["id"] == "qwen-turbo":
+        metadata["sigmas"] = graph["sigmas"]["inputs"]["sigmas"]
     if "shift" in model:
         metadata["shift"] = model["shift"]
     return {"prompt": graph, "metadata": metadata}

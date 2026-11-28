@@ -24,6 +24,8 @@ struct StudioModel: Decodable, Identifiable, Sendable {
 
 struct GenerationMetadata: Codable, Sendable {
     let model: String
+    var modelId: String?
+    var requestSeconds: Double?
     let seed: UInt64
     let prompt: String
     let steps: Int?
@@ -32,12 +34,21 @@ struct GenerationMetadata: Codable, Sendable {
     let scheduler: String?
     let negativePrompt: String?
     let shift: Double?
+    let diffusionModel: String?
+    let encoder: String?
+    let vae: String?
+    let sigmas: String?
 }
 
 struct StudioResult {
     let text: String
-    let images: [Data]
+    let images: [StudioImage]
     let metadata: GenerationMetadata
+}
+
+struct StudioImage {
+    let data: Data
+    let filename: String
 }
 
 enum StudioEvent {
@@ -55,8 +66,7 @@ private struct StudioError: LocalizedError {
 final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegate, @preconcurrency NetServiceDelegate {
     var models: [StudioModel] = []
     var status = "Searching for your PC…"
-    var serverName: String?
-    var isConnected: Bool { baseURL != nil }
+    private(set) var isConnected = false
     private var baseURL: URL?
     private let browser = NetServiceBrowser()
     private var services: [NetService] = []
@@ -66,86 +76,94 @@ final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegat
     private var discoveryTask: Task<Void, Never>?
 
     func discover() {
-        discoveryTask?.cancel()
+        guard !isConnected, discoveryTask == nil else { return }
+        browse()
+        discoveryTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(5)) }
+                catch { return }
+                guard let self, !isConnected else { return }
+                browse()
+            }
+        }
+    }
+
+    private func browse() {
         browser.stop()
         services.forEach { $0.stop() }
         services.removeAll()
         connectedService = nil
         baseURL = nil
-        models = []
-        serverName = nil
         status = "Searching for your PC…"
         browser.delegate = self
         browser.searchForServices(ofType: "_localstudio._tcp.", inDomain: "local.")
-        discoveryTask = Task { [weak self] in
-            while !Task.isCancelled {
-                do { try await Task.sleep(for: .seconds(10)) }
-                catch { return }
-                guard let self else { return }
-                if baseURL == nil {
-                    for service in services { service.resolve(withTimeout: 5) }
-                } else if socket == nil {
-                    await refreshModels()
-                }
-            }
-        }
     }
 
     func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {
+        guard !isConnected else { return }
         services.append(service)
         service.delegate = self
-        service.resolve(withTimeout: 10)
+        service.resolve(withTimeout: 4)
     }
 
     func netServiceDidResolveAddress(_ service: NetService) {
-        guard baseURL == nil, let resolvedHost = service.hostName else { return }
+        guard !isConnected, baseURL == nil, services.contains(service), let resolvedHost = service.hostName else { return }
         let host = resolvedHost.hasSuffix(".") ? String(resolvedHost.dropLast()) : resolvedHost
         guard let url = URL(string: "http://\(host):\(service.port)") else { return }
         connectedService = service
         baseURL = url
-        serverName = service.name
         status = "Connecting…"
         Task { await refreshModels() }
     }
 
     func netServiceBrowser(_ browser: NetServiceBrowser, didRemove service: NetService, moreComing: Bool) {
         services.removeAll { $0 == service }
-        if connectedService == service {
-            baseURL = nil
-            models = []
-            serverName = nil
-            status = "PC disconnected. Searching…"
-            for candidate in services { candidate.resolve(withTimeout: 10) }
-        }
+        if !isConnected && connectedService == service { connectedService = nil; baseURL = nil }
     }
 
     func netServiceBrowser(_ browser: NetServiceBrowser, didNotSearch errorDict: [String: NSNumber]) {
-        status = "Discovery unavailable. Allow Local Network access in iPhone Settings."
+        status = "Allow Local Network access in iPhone Settings."
     }
 
     func netService(_ sender: NetService, didNotResolve errorDict: [String: NSNumber]) {
-        if baseURL == nil { status = "Couldn’t reach your PC. Check that ComfyUI is running on the same network." }
+        if !isConnected { status = "Searching for your PC…" }
     }
 
-    func refreshModels() async {
+    private func refreshModels() async {
+        let candidate = connectedService
         do {
-            let data = try await request("local-studio/catalog")
+            let data = try await request("local-studio/catalog", timeout: 4)
             struct Catalog: Decodable { let version: Int; let models: [StudioModel] }
             let catalog = try JSONDecoder().decode(Catalog.self, from: data)
+            guard candidate == connectedService else { return }
             guard catalog.version == 1 else { throw StudioError(message: "Update the Local Studio ComfyUI extension.") }
             models = catalog.models
+            isConnected = true
             status = "Connected"
+            discoveryTask?.cancel()
+            discoveryTask = nil
+            browser.stop()
         } catch {
+            guard candidate == connectedService else { return }
             status = error.localizedDescription
             baseURL = nil
             connectedService = nil
         }
     }
 
-    private func request(_ path: String, body: [String: Any]? = nil) async throws -> Data {
+    private func connectionFailed(_ error: Error) {
+        guard !Task.isCancelled, !(error is CancellationError),
+              error is URLError || (error as NSError).domain == NSPOSIXErrorDomain else { return }
+        isConnected = false
+        baseURL = nil
+        connectedService = nil
+        discover()
+    }
+
+    private func request(_ path: String, body: [String: Any]? = nil, timeout: TimeInterval = 60) async throws -> Data {
         guard let baseURL else { throw StudioError(message: "Start ComfyUI on your PC and connect both devices to the same network.") }
         var request = URLRequest(url: baseURL.appending(path: path))
-        request.timeoutInterval = 60
+        request.timeoutInterval = timeout
         if let body {
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -184,6 +202,7 @@ final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegat
     func run(model: String, prompt: String, photos: [Data], messages: [[String: String]], enhance: Bool = false,
              width: Int, height: Int, maxTokens: Int, event: (StudioEvent) -> Void) async throws -> StudioResult {
         guard let baseURL else { throw StudioError(message: "No PC found. Start ComfyUI on the same network.") }
+        let started = Date.now
         let requestID = UUID().uuidString.lowercased()
         let clientID = UUID().uuidString.lowercased()
         let isImageRequest = !enhance && models.first(where: { $0.id == model })?.family != "chat"
@@ -199,57 +218,64 @@ final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegat
             socket = nil
             activePromptID = nil
         }
-        return try await withTaskCancellationHandler {
-            // Receive the server's status handshake before submitting, so no streamed tokens are lost.
-            _ = try await ws.receive()
-            var filenames: [String] = []
-            for photo in photos {
-                try Task.checkCancellation()
-                event(.stage("Uploading original image…"))
-                filenames.append(try await upload(photo))
-            }
-            let workflowData = try await request("local-studio/workflow", body: [
-                "model": model, "prompt": prompt, "images": filenames, "messages": messages,
-                "enhance": enhance, "client_id": clientID, "request_id": requestID,
-                "width": width, "height": height, "max_tokens": maxTokens
-            ])
-            let workflow = try JSONSerialization.jsonObject(with: workflowData) as! [String: Any]
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
-            let metadata = try decoder.decode(GenerationMetadata.self, from: JSONSerialization.data(withJSONObject: workflow["metadata"]!))
-            try Task.checkCancellation()
-            _ = try await request("prompt", body: ["prompt": workflow["prompt"]!, "client_id": clientID, "prompt_id": requestID])
-            event(.stage("Queued on your PC…"))
-            while true {
-                try Task.checkCancellation()
-                let message = try await ws.receive()
-                guard case .string(let string) = message,
-                      let data = string.data(using: .utf8),
-                      let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let type = object["type"] as? String, let payload = object["data"] as? [String: Any] else { continue }
-                if type == "local_studio_text", payload["request_id"] as? String == requestID {
-                    event(.text(payload["text"] as? String ?? ""))
-                    continue
+        do {
+            return try await withTaskCancellationHandler {
+                // Receive the server's status handshake before submitting, so no streamed tokens are lost.
+                _ = try await ws.receive()
+                var filenames: [String] = []
+                for photo in photos {
+                    try Task.checkCancellation()
+                    event(.stage("Uploading original image…"))
+                    filenames.append(try await upload(photo))
                 }
-                guard payload["prompt_id"] as? String == requestID else { continue }
-                switch type {
-                case "execution_start": event(.stage("Loading model…"))
-                case "executing":
-                    if let node = payload["node"] as? String {
-                        event(.stage(node == "decode" ? "Decoding image…" : node == "output" ? "Saving result…" : "Running model…"))
-                    } else if payload["node"] is NSNull {
-                        return try await result(requestID, metadata: metadata)
+                let workflowData = try await request("local-studio/workflow", body: [
+                    "model": model, "prompt": prompt, "images": filenames, "messages": messages,
+                    "enhance": enhance, "client_id": clientID, "request_id": requestID,
+                    "width": width, "height": height, "max_tokens": maxTokens
+                ])
+                let workflow = try JSONSerialization.jsonObject(with: workflowData) as! [String: Any]
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                var metadata = try decoder.decode(GenerationMetadata.self, from: JSONSerialization.data(withJSONObject: workflow["metadata"]!))
+                metadata.modelId = enhance ? "qwen-chat" : model
+                try Task.checkCancellation()
+                _ = try await request("prompt", body: ["prompt": workflow["prompt"]!, "client_id": clientID, "prompt_id": requestID])
+                event(.stage("Queued on your PC…"))
+                while true {
+                    try Task.checkCancellation()
+                    let message = try await ws.receive()
+                    guard case .string(let string) = message,
+                          let data = string.data(using: .utf8),
+                          let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let type = object["type"] as? String, let payload = object["data"] as? [String: Any] else { continue }
+                    if type == "local_studio_text", payload["request_id"] as? String == requestID {
+                        event(.text(payload["text"] as? String ?? ""))
+                        continue
                     }
-                case "progress":
-                    if isImageRequest && payload["node"] as? String != "sample" { continue }
-                    if let value = payload["value"] as? Int, let total = payload["max"] as? Int { event(.progress(value, total)) }
-                case "execution_error": throw StudioError(message: payload["exception_message"] as? String ?? "Model execution failed.")
-                case "execution_interrupted": throw CancellationError()
-                default: break
+                    guard payload["prompt_id"] as? String == requestID else { continue }
+                    switch type {
+                    case "execution_start": event(.stage("Loading model…"))
+                    case "executing":
+                        if let node = payload["node"] as? String {
+                            event(.stage(node == "decode" ? "Decoding image…" : node == "output" ? "Saving result…" : "Running model…"))
+                        } else if payload["node"] is NSNull {
+                            metadata.requestSeconds = Date.now.timeIntervalSince(started)
+                            return try await result(requestID, metadata: metadata)
+                        }
+                    case "progress":
+                        if isImageRequest && payload["node"] as? String != "sample" { continue }
+                        if let value = payload["value"] as? Int, let total = payload["max"] as? Int { event(.progress(value, total)) }
+                    case "execution_error": throw StudioError(message: payload["exception_message"] as? String ?? "Model execution failed.")
+                    case "execution_interrupted": throw CancellationError()
+                    default: break
+                    }
                 }
+            } onCancel: {
+                ws.cancel(with: .goingAway, reason: nil)
             }
-        } onCancel: {
-            ws.cancel(with: .goingAway, reason: nil)
+        } catch {
+            connectionFailed(error)
+            throw error
         }
     }
 
@@ -258,7 +284,7 @@ final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegat
         socket?.cancel(with: .goingAway, reason: nil)
         Task {
             do { _ = try await request("api/jobs/\(id)/cancel", body: [:]) }
-            catch { status = "Couldn’t cancel the PC job: \(error.localizedDescription)" }
+            catch { connectionFailed(error) }
         }
     }
 
@@ -276,7 +302,7 @@ final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegat
         struct Entry: Decodable { let outputs: [String: Output] }
         let history = try JSONDecoder().decode([String: Entry].self, from: data)
         guard let output = history[id]?.outputs["output"] else { throw StudioError(message: "ComfyUI returned no result.") }
-        var images: [Data] = []
+        var images: [StudioImage] = []
         for image in output.images ?? [] {
             guard let baseURL else { throw StudioError(message: "Your PC disconnected before the image downloaded.") }
             var url = URLComponents(url: baseURL.appending(path: "view"), resolvingAgainstBaseURL: false)!
@@ -285,7 +311,7 @@ final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegat
                               URLQueryItem(name: "type", value: image.type)]
             let (data, response) = try await URLSession.shared.data(from: url.url!)
             guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw StudioError(message: "Couldn’t download the generated image.") }
-            images.append(data)
+            images.append(StudioImage(data: data, filename: image.filename))
         }
         let text = output.text?.joined() ?? ""
         guard !text.isEmpty || !images.isEmpty else { throw StudioError(message: "The model returned an empty result.") }

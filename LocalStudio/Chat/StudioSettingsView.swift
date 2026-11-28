@@ -1,28 +1,28 @@
 import SwiftUI
+import UIKit
 
 struct StudioSettingsView: View {
     @Bindable var session: ChatSession
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Your PC") {
-                    Label(session.connection.status, systemImage: session.connection.isConnected ? "checkmark.circle" : "network")
-                    if let name = session.connection.serverName { Text(name).foregroundStyle(.secondary) }
-                    Button("Find PC again") { session.connection.discover() }
-                        .disabled(session.isGenerating || session.isEnhancing)
-                    Text("Start run_nvidia_gpu.bat on your PC. Keep both devices on the same local network and allow Local Studio to access it.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
                 Section("Image canvas") {
-                    Picker("Width", selection: $session.canvasWidth) {
-                        ForEach([512, 768, 1024, 1280, 1536], id: \.self) { Text("\($0) px").tag($0) }
+                    VStack(alignment: .leading, spacing: 10) {
+                        LabeledContent("Resolution", value: "\(session.canvasMegapixels.formatted(.number.precision(.fractionLength(1)))) MP")
+                        Slider(value: $session.canvasMegapixels, in: 0.1...4.0, step: 0.1)
+                            .accessibilityLabel("Resolution in megapixels")
+                        Text("\(session.canvasWidth) × \(session.canvasHeight) pixels")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
-                    Picker("Height", selection: $session.canvasHeight) {
-                        ForEach([512, 768, 1024, 1280, 1536], id: \.self) { Text("\($0) px").tag($0) }
+                    Picker("Aspect ratio", selection: $session.canvasAspectRatio) {
+                        ForEach(CanvasAspectRatio.allCases) { ratio in
+                            Label { Text(ratio.rawValue) } icon: { Image(uiImage: ratio.icon) }
+                                .tag(ratio)
+                        }
                     }
-                    Text("Edits follow the reference image’s aspect ratio at the model’s trained resolution.")
+                    .pickerStyle(.menu)
+                    Text("Reference-based edits preserve the source aspect ratio.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("Text") {
@@ -59,8 +59,38 @@ struct StudioSettingsView: View {
                 }
             }
             .navigationTitle("Settings")
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
+        .tint(.white)
         .onDisappear { session.saveSettings() }
+    }
+}
+
+enum CanvasAspectRatio: String, CaseIterable, Identifiable {
+    case square = "1:1"
+    case portrait = "3:4"
+    case landscape = "4:3"
+    case portraitPhoto = "2:3"
+    case landscapePhoto = "3:2"
+    case portraitWide = "9:16"
+    case widescreen = "16:9"
+    case portraitCinema = "9:21"
+    case cinema = "21:9"
+
+    var id: String { rawValue }
+    var ratio: Double {
+        let parts = rawValue.split(separator: ":").map { Double($0)! }
+        return parts[0] / parts[1]
+    }
+
+    @MainActor var icon: UIImage {
+        let width = CGFloat(20 * min(1, ratio))
+        let height = CGFloat(20 / max(1, ratio))
+        return UIGraphicsImageRenderer(size: CGSize(width: 24, height: 24)).image { _ in
+            UIColor.white.setStroke()
+            let outline = UIBezierPath(roundedRect: CGRect(x: (24 - width) / 2, y: (24 - height) / 2,
+                                                          width: width, height: height).insetBy(dx: 0.75, dy: 0.75), cornerRadius: 1.5)
+            outline.lineWidth = 1.5
+            outline.stroke()
+        }.withRenderingMode(.alwaysTemplate)
     }
 }

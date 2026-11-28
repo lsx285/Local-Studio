@@ -26,6 +26,8 @@ struct ArtworkViewer: View {
     @State private var ready = false
     @State private var closing = false
     @State private var infoProgress: CGFloat = 0
+    @State private var infoImageHeight: CGFloat = 0
+    @State private var infoScrollOffset: CGFloat = 0
     @State private var infoDragStart: CGFloat?
     @State private var infoGestureRejected = false
     @State private var chrome = true
@@ -67,6 +69,11 @@ struct ArtworkViewer: View {
             .onChanged { value in
                 guard ready, !closing, !zoomed, !request.limited, !infoGestureRejected else { return }
                 if infoDragStart == nil {
+                    if infoProgress > 0.99 && (infoScrollOffset > 1 || value.startLocation.y > infoImageHeight + 70
+                        || (value.startLocation.y >= infoImageHeight && value.translation.height < 0)) {
+                        infoGestureRejected = true
+                        return
+                    }
                     guard abs(value.translation.height) > abs(value.translation.width) * 1.25 else {
                         infoGestureRejected = true
                         return
@@ -99,19 +106,21 @@ struct ArtworkViewer: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let size = geometry.size
-            let windowInsets = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-                .flatMap(\.windows).first(where: \.isKeyWindow)?.safeAreaInsets ?? .zero
+            let window = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+                .flatMap(\.windows).first(where: \.isKeyWindow)
+            let size = window?.bounds.size ?? geometry.size
+            let windowInsets = window?.safeAreaInsets ?? .zero
             let top = max(geometry.safeAreaInsets.top, windowInsets.top)
             let bottom = max(12, max(geometry.safeAreaInsets.bottom, windowInsets.bottom))
             let origin = geometry.frame(in: .global).origin
-            let source = transitionSource?.offsetBy(dx: -origin.x, dy: -origin.y)
+            let source = transitionSource
+            let ratio = current.photo.image.size.width / max(1, current.photo.image.size.height)
+            let imageHeight = min(size.height * 0.52, size.width / ratio)
             let area = chrome
                 ? CGRect(x: 0, y: (top + 54) * (1 - infoProgress), width: size.width,
                          height: max(100, (size.height - top - bottom - 154) * (1 - infoProgress)
-                                     + (size.height - bottom - 360) * infoProgress))
+                                     + imageHeight * infoProgress))
                 : CGRect(origin: .zero, size: size)
-            let ratio = current.photo.image.size.width / max(1, current.photo.image.size.height)
             let width = max(1, min(area.width, area.height * ratio))
             let target = CGRect(x: area.midX - width / 2, y: area.midY - width / ratio / 2,
                                 width: width, height: width / ratio)
@@ -172,38 +181,26 @@ struct ArtworkViewer: View {
                     .allowsHitTesting(infoProgress < 0.01)
 
                     if !request.limited {
-                        RoundedRectangle(cornerRadius: 20).fill(Color(white: 0.1))
-                            .frame(height: 260)
-                            .overlay {
-                                ScrollView {
-                                    VStack(alignment: .leading, spacing: 10) {
-                                        Text("Image info").font(.headline)
-                                        Text(current.date.formatted(date: .abbreviated, time: .shortened)).foregroundStyle(.secondary)
-                                        Text("\(Int(current.photo.image.size.width * current.photo.image.scale)) × \(Int(current.photo.image.size.height * current.photo.image.scale)) pixels · \(ByteCountFormatter.string(fromByteCount: Int64(current.photo.data.count), countStyle: .file))")
-                                            .font(.caption).foregroundStyle(.secondary)
-                                        if let metadata = current.metadata {
-                                            Text(metadata.model).font(.subheadline.weight(.semibold))
-                                            if let steps = metadata.steps, let cfg = metadata.cfg {
-                                                Text("\(steps) steps · CFG \(cfg.formatted()) · \(metadata.sampler ?? "") · \(metadata.scheduler ?? "")")
-                                                    .font(.caption).foregroundStyle(.secondary)
-                                            }
-                                            Text("Seed: \(String(metadata.seed))").font(.caption).textSelection(.enabled)
-                                            if let shift = metadata.shift { Text("Shift: \(shift.formatted())").font(.caption) }
-                                            Text(metadata.prompt).font(.subheadline).textSelection(.enabled)
-                                            if let negative = metadata.negativePrompt, !negative.isEmpty {
-                                                Text("Negative: \(negative)").font(.caption).foregroundStyle(.secondary)
-                                            }
-                                        }
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .leading).padding(18)
-                                }
+                        ScrollView {
+                            VStack(spacing: 0) {
+                                Color.clear.frame(height: imageHeight).allowsHitTesting(false)
+                                ArtworkInfoView(photo: current)
+                                    .padding(.horizontal, 20).padding(.top, 20)
+                                    .padding(.bottom, bottom + 90)
+                                    .frame(maxWidth: .infinity)
+                                    .background(.black)
                             }
-                            .padding(.horizontal, 28)
-                            .padding(.bottom, max(12, bottom - 6) + 62)
-                            .frame(maxHeight: .infinity, alignment: .bottom)
-                            .offset(y: 290 * (1 - infoProgress))
-                            .opacity(expanded ? infoProgress : 0)
-                            .allowsHitTesting(infoProgress > 0.01)
+                        }
+                        .id(selected)
+                        .scrollIndicators(.hidden)
+                        .scrollDisabled(infoProgress < 0.99)
+                        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, value in
+                            infoScrollOffset = value
+                        }
+                        .frame(width: size.width, height: size.height)
+                        .offset(y: 290 * (1 - infoProgress))
+                        .opacity(expanded ? infoProgress : 0)
+                        .allowsHitTesting(infoProgress > 0.99)
                     }
                     VStack(spacing: 14) {
                         GeometryReader { rail in
@@ -243,7 +240,13 @@ struct ArtworkViewer: View {
                             Spacer()
                             if !request.limited {
                                 HStack(spacing: 8) {
-                                    Button { toggleInfo() } label: { StudioIcon(.viewerInfo).frame(width: 44, height: 48) }
+                                    Button { toggleInfo() } label: {
+                                        Group {
+                                            if info { Image(systemName: "info.circle.fill").font(.system(size: StudioGlyph.viewerInfo.size)) }
+                                            else { StudioIcon(.viewerInfo) }
+                                        }
+                                        .frame(width: 44, height: 48)
+                                    }
                                         .accessibilityLabel("Info")
                                     Button { let photo = current.photo; close { edit(photo) } } label: {
                                         StudioIcon(.viewerEdit).frame(width: 44, height: 48)
@@ -262,12 +265,15 @@ struct ArtworkViewer: View {
                     .opacity(expanded ? 1 : 0)
                 }
             }
+            .frame(width: size.width, height: size.height, alignment: .topLeading)
+            .offset(x: -origin.x, y: -origin.y)
+            .onChange(of: imageHeight, initial: true) { infoImageHeight = imageHeight }
             .simultaneousGesture(infoGesture)
             .foregroundStyle(.white).tint(.white)
             .onAppear {
                 withAnimation(motion, completionCriteria: .logicallyComplete) { expanded = true } completion: { if !closing { ready = true } }
             }
-            .onChange(of: selected) { zoomed = false }
+            .onChange(of: selected) { zoomed = false; infoScrollOffset = 0 }
             .confirmationDialog("Delete image?", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("Delete", role: .destructive) { let id = selected; close { remove(id) } }
             }

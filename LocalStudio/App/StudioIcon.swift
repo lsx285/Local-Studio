@@ -4,16 +4,16 @@ import SwiftUI
 enum StudioGlyph: String {
     case plus, newChat, moreHeader, temporary, temporaryChecked
     case copy, edit, selectText, share, save, close
-    case copyAction, speaker, shareAction, moreAction
+    case copyAction, shareAction, moreAction
     case upArrow, downArrow, expand, collapse, back, stop
-    case retry, settings, viewerInfo, viewerEdit, viewerTrash, viewerShare, bug
+    case retry, settings, viewerInfo, viewerEdit, viewerTrash, viewerShare
 
     var size: CGFloat {
         switch self {
         case .newChat, .moreHeader, .temporary, .temporaryChecked, .back: 44
         case .plus, .upArrow, .expand, .collapse, .stop: 32
         case .downArrow: 36
-        case .copyAction, .speaker, .shareAction, .moreAction: 18
+        case .copyAction, .shareAction, .moreAction: 18
         case .close: 22
         case .viewerInfo, .viewerEdit: 80 / 3
         case .viewerTrash: 88 / 3

@@ -1,5 +1,4 @@
 import SwiftUI
-import AVFoundation
 import Photos
 
 struct MessageView: View {
@@ -9,7 +8,6 @@ struct MessageView: View {
     let canRetry: Bool
     let retryResponse: (ChatMessage) -> Void
     let editPrompt: (ChatMessage) -> Void
-    @State private var speech: AVSpeechSynthesizer?
     @State private var photoError: String?
     @State private var selectingText = false
     @State private var textSize: CGSize = .zero
@@ -36,7 +34,7 @@ struct MessageView: View {
                                 .glassEffect(.clear.interactive(), in: .circle)
                                 .padding(20)
                             }
-                            .accessibilityLabel("Demo artwork")
+                            .accessibilityLabel("Generated artwork")
                             .contextMenu {
                                 Button { UIPasteboard.general.image = photo.image } label: {
                                     Label { Text("Copy") } icon: { StudioIcon(.copy) }
@@ -121,14 +119,6 @@ struct MessageView: View {
                     if !message.text.isEmpty {
                         Button { UIPasteboard.general.string = message.text } label: { StudioIcon(.copyAction) }
                             .accessibilityLabel("Copy response")
-                        Button {
-                            if speech?.isSpeaking == true { speech?.stopSpeaking(at: .immediate) }
-                            else {
-                                if speech == nil { speech = AVSpeechSynthesizer() }
-                                speech?.speak(AVSpeechUtterance(string: message.text))
-                            }
-                        } label: { StudioIcon(.speaker) }
-                            .accessibilityLabel("Read aloud")
                         ShareLink(item: message.text) { StudioIcon(.shareAction) }
                             .accessibilityLabel("Share response")
                     } else if let photo = message.attachments.first {
@@ -158,7 +148,6 @@ struct MessageView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: message.role == .user ? .trailing : .leading)
-        .onDisappear { speech?.stopSpeaking(at: .immediate) }
         .alert("Couldn’t save photo", isPresented: Binding(get: { photoError != nil }, set: { if !$0 { photoError = nil } })) {
             Button("OK") { photoError = nil }
         } message: { Text(photoError ?? "") }

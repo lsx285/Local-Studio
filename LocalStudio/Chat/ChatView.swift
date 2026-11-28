@@ -13,7 +13,6 @@ struct ChatView: View {
     @State private var settingsPresented = false
     @State private var viewer: ViewerRequest?
     @State private var imageFrames: [UUID: CGRect] = [:]
-    @State private var diagnosticsPresented = false
     @State private var endVisible = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -92,9 +91,6 @@ struct ChatView: View {
                 .safeAreaInset(edge: .top, spacing: 0) {
                     VStack(spacing: 20) {
                         HStack {
-                            Button { diagnosticsPresented = true } label: { StudioIcon(.bug).frame(width: 44, height: 44) }
-                                .glassEffect(.regular.interactive(), in: .circle)
-                                .accessibilityLabel("Paste diagnostics")
                             Spacer()
                             if session.messages.isEmpty {
                                 Button { session.toggleTemporary() } label: {
@@ -157,6 +153,9 @@ struct ChatView: View {
                             scrollPosition.scrollTo(edge: .bottom)
                         }
                     }
+                    .disabled(!session.connection.isConnected)
+                    .allowsHitTesting(session.connection.isConnected)
+                    .opacity(session.connection.isConnected ? 1 : 0.45)
                     .overlay(alignment: .top) {
                         ZStack {
                             if showsScrollButton {
@@ -195,7 +194,6 @@ struct ChatView: View {
                     .zIndex(10)
                 }
             }
-            .sheet(isPresented: $diagnosticsPresented) { PasteDiagnosticsView() }
             .task { session.connection.discover(); await session.restore() }
             .sheet(isPresented: $settingsPresented) {
                 StudioSettingsView(session: session)
@@ -220,6 +218,9 @@ struct ChatView: View {
             .alert("Couldn’t complete request", isPresented: Binding(get: { session.generationError != nil }, set: { if !$0 { session.generationError = nil } })) {
                 Button("OK") { session.generationError = nil }
             } message: { Text(session.generationError ?? "") }
+            .onChange(of: session.connection.isConnected) {
+                if !session.connection.isConnected { composerFocused = false }
+            }
             .onChange(of: session.messages.last?.text) {
                 if followsBottom { scrollPosition.scrollTo(edge: .bottom) }
             }

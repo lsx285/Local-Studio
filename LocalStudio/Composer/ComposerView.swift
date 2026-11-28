@@ -84,11 +84,9 @@ struct ComposerView: View {
         for data in images.prefix(max(0, 8 - session.attachments.count)) {
             guard let photo = PhotoAttachment(data: data) else {
                 photoError = true
-                PasteDiagnostics.shared.record("Clipboard image import failed: unsupported image data")
                 continue
             }
             withAnimation(railAnimation) { session.attachments.append(photo) }
-            PasteDiagnostics.shared.record("Original clipboard image attached: composer attachments=\(session.attachments.count)")
         }
     }
 
@@ -117,15 +115,20 @@ struct ComposerView: View {
                     .font(.system(size: 13, weight: .medium))
                 }
                 .accessibilityLabel("Model")
+                .tint(.white)
                 Spacer(minLength: 4)
                 Button {
                     if session.isEnhancing { session.cancelGeneration() }
                     else { session.enhancePrompt() }
                 } label: {
-                    if session.isEnhancing {
-                        HStack(spacing: 5) { ProgressView().controlSize(.small); Text("Stop").font(.caption) }
+                    TimelineView(.animation(minimumInterval: 1 / 30, paused: !session.isEnhancing)) { timeline in
+                        HStack(spacing: 5) {
+                            Image(systemName: "wand.and.stars")
+                                .rotationEffect(.degrees(session.isEnhancing ? sin(timeline.date.timeIntervalSinceReferenceDate * 7) * 12 : 0))
+                            Text(session.isEnhancing ? "Enhancing..." : "Enhance")
+                        }
+                        .font(.system(size: 13, weight: .medium))
                     }
-                    else { Label("Enhance", systemImage: "wand.and.stars").font(.system(size: 13, weight: .medium)) }
                 }
                 .disabled(!session.canEnhance && !session.isEnhancing)
                 .accessibilityLabel(session.isEnhancing ? "Stop prompt enhancement" : "Enhance prompt with Qwen")

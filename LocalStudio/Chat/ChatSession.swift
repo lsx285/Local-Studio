@@ -5,8 +5,16 @@ import SwiftUI
 final class ChatSession {
     let connection = StudioConnection()
     var selectedModelID = "qwen-chat"
-    var canvasWidth = 1024
-    var canvasHeight = 1024
+    var canvasMegapixels = 1.0
+    var canvasAspectRatio = CanvasAspectRatio.square
+    private var canvasSize: (width: Int, height: Int) {
+        let area = canvasMegapixels * 1_000_000
+        let ratio = canvasAspectRatio.ratio
+        return (max(16, Int((sqrt(area * ratio) / 16).rounded()) * 16),
+                max(16, Int((sqrt(area / ratio) / 16).rounded()) * 16))
+    }
+    var canvasWidth: Int { canvasSize.width }
+    var canvasHeight: Int { canvasSize.height }
     var maxTokens = 1024
     var isEnhancing = false
     var generationError: String?
@@ -41,18 +49,18 @@ final class ChatSession {
 
     init() {
         let defaults = UserDefaults.standard
-        defaults.register(defaults: ["model": "qwen-chat", "canvasWidth": 1024, "canvasHeight": 1024, "maxTokens": 1024])
+        defaults.register(defaults: ["model": "qwen-chat", "canvasMegapixels": 1.0, "canvasAspectRatio": "1:1", "maxTokens": 1024])
         selectedModelID = defaults.string(forKey: "model")!
-        canvasWidth = defaults.integer(forKey: "canvasWidth")
-        canvasHeight = defaults.integer(forKey: "canvasHeight")
+        canvasMegapixels = defaults.double(forKey: "canvasMegapixels")
+        canvasAspectRatio = CanvasAspectRatio(rawValue: defaults.string(forKey: "canvasAspectRatio")!)!
         maxTokens = defaults.integer(forKey: "maxTokens")
     }
 
     func saveSettings() {
         let defaults = UserDefaults.standard
         defaults.set(selectedModelID, forKey: "model")
-        defaults.set(canvasWidth, forKey: "canvasWidth")
-        defaults.set(canvasHeight, forKey: "canvasHeight")
+        defaults.set(canvasMegapixels, forKey: "canvasMegapixels")
+        defaults.set(canvasAspectRatio.rawValue, forKey: "canvasAspectRatio")
         defaults.set(maxTokens, forKey: "maxTokens")
     }
 
@@ -65,7 +73,7 @@ final class ChatSession {
         guard messages.isEmpty, !isTemporary, revision == 0 else { return }
         messages = saved.map {
             ChatMessage(id: $0.id, role: $0.role, text: $0.text,
-                        attachments: $0.photos.compactMap { PhotoAttachment(id: $0.id, data: $0.data) }, createdAt: $0.createdAt, metadata: $0.metadata)
+                        attachments: $0.photos.compactMap { PhotoAttachment(id: $0.id, data: $0.data, filename: $0.filename) }, createdAt: $0.createdAt, metadata: $0.metadata)
         }
     }
 
@@ -104,23 +112,27 @@ final class ChatSession {
             editingMessageID = nil
         }
         persist()
-        generate(prompt: prompt, photos: photos)
+        generate(prompt: prompt, photos: photos, modelID: selectedModelID)
     }
 
     func retry(_ message: ChatMessage) {
         guard !isGenerating, !isEnhancing, connection.isConnected, message.role == .assistant,
               let index = messages.firstIndex(where: { $0.id == message.id }),
               let prompt = messages[..<index].last(where: { $0.role == .user }) else { return }
-        generate(prompt: prompt.text, photos: prompt.attachments, replacing: message.id)
+        let modelID: String?
+        if let recorded = message.metadata?.modelId { modelID = recorded }
+        else if message.metadata?.model == "Qwen3-VL 4B" { modelID = "qwen-chat" }
+        else { modelID = connection.models.first { $0.name == message.metadata?.model }?.id }
+        guard let modelID else { generationError = "The original model for this response is unavailable."; return }
+        generate(prompt: prompt.text, photos: prompt.attachments, modelID: modelID, replacing: message.id)
     }
 
-    private func generate(prompt: String, photos: [PhotoAttachment], replacing messageID: UUID? = nil) {
-        let modelID = selectedModelID
+    private func generate(prompt: String, photos: [PhotoAttachment], modelID: String, replacing messageID: UUID? = nil) {
         let responseID = messageID ?? UUID()
         let previous = messageID.flatMap { id in messages.first { $0.id == id } }
         let historyEnd = messageID.flatMap { id in messages.firstIndex { $0.id == id } } ?? messages.endIndex
         let history = messages[..<historyEnd].filter { $0.role == .user || !$0.text.isEmpty }.map { ["role": $0.role.rawValue, "text": $0.text] }
-        isImageGeneration = selectedModel?.family != "chat"
+        isImageGeneration = connection.models.first { $0.id == modelID }?.family != "chat"
         generationStarted = .now
         generationStage = "Queued on your PC..."
         generationProgress = nil
@@ -149,7 +161,7 @@ final class ChatSession {
                 }
                 try Task.checkCancellation()
                 let response = ChatMessage(id: responseID, role: .assistant, text: result.text,
-                                           attachments: result.images.compactMap { PhotoAttachment(data: $0) }, metadata: result.metadata)
+                                           attachments: result.images.compactMap { PhotoAttachment(data: $0.data, filename: $0.filename) }, metadata: result.metadata)
                 if let index = messages.firstIndex(where: { $0.id == responseID }) { messages[index] = response }
                 else { messages.append(response) }
                 isGenerating = false
@@ -177,11 +189,16 @@ final class ChatSession {
             guard let self else { return }
             defer { if !Task.isCancelled { isEnhancing = false; generationTask = nil } }
             do {
+                var streamedDraft = original
                 let result = try await connection.run(model: model, prompt: original, photos: photos, messages: [], enhance: true,
-                                                       width: canvasWidth, height: canvasHeight, maxTokens: maxTokens) { _ in }
+                                                       width: canvasWidth, height: canvasHeight, maxTokens: maxTokens) { event in
+                    guard case .text(let text) = event else { return }
+                    guard self.draft == streamedDraft else { self.cancelGeneration(); return }
+                    self.draft = text
+                    streamedDraft = text
+                }
                 try Task.checkCancellation()
-                if draft == original { draft = result.text }
-                else { generationError = "Your draft changed during enhancement. The new draft was kept." }
+                if draft == streamedDraft { draft = result.text }
             } catch {
                 if !Task.isCancelled { generationError = error.localizedDescription }
             }
@@ -212,7 +229,7 @@ final class ChatSession {
         let currentRevision = revision
         let snapshot = messages.map {
             ArchivedMessage(id: $0.id, role: $0.role, text: $0.text,
-                            photos: $0.attachments.map { .init(id: $0.id, data: $0.data) }, createdAt: $0.createdAt, metadata: $0.metadata)
+                            photos: $0.attachments.map { .init(id: $0.id, data: $0.data, filename: $0.filename) }, createdAt: $0.createdAt, metadata: $0.metadata)
         }
         Task {
             do { try await ConversationArchive.shared.save(snapshot, revision: currentRevision) }

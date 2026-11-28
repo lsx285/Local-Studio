@@ -22,12 +22,14 @@ struct ChatMessage: Identifiable {
 struct PhotoAttachment: Identifiable {
     let id: UUID
     let data: Data
+    let filename: String?
     let image: UIImage
 
-    init?(id: UUID = UUID(), data: Data) {
+    init?(id: UUID = UUID(), data: Data, filename: String? = nil) {
         guard let image = UIImage(data: data) else { return nil }
         self.id = id
         self.data = data
+        self.filename = filename
         self.image = image
     }
 }
@@ -37,6 +39,7 @@ struct ArchivedMessage: Codable, Sendable {
     struct Photo: Codable, Sendable {
         let id: UUID
         let data: Data
+        let filename: String?
     }
     let id: UUID
     let role: ChatMessage.Role
