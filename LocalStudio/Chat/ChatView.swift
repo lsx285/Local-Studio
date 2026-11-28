@@ -83,6 +83,9 @@ struct ChatView: View {
                 .scrollClipDisabled()
                 .scrollPosition($scrollPosition)
                 .defaultScrollAnchor(.bottom, for: .initialOffset)
+                // Growing content (streamed text, new rows, keyboard) keeps the bottom in view while following;
+                // otherwise the reader's position stays put.
+                .defaultScrollAnchor(followsBottom ? .bottom : .top, for: .sizeChanges)
                 .scrollDismissesKeyboard(composerFullScreen || composerTransitioning ? .never : .interactively)
                 .scrollDisabled(composerFullScreen || composerTransitioning)
                 .onScrollPhaseChange { _, phase in
@@ -92,11 +95,9 @@ struct ChatView: View {
                 .onScrollGeometryChange(for: ConversationScrollMetrics.self) { geometry in
                     ConversationScrollMetrics(
                         distance: max(0, geometry.contentSize.height - geometry.visibleRect.maxY),
-                        contentHeight: geometry.contentSize.height,
-                        viewportHeight: geometry.containerSize.height,
                         canScroll: geometry.contentSize.height + geometry.contentInsets.top + geometry.contentInsets.bottom
                                    > geometry.containerSize.height + 1)
-                } action: { old, value in
+                } action: { _, value in
                     guard !composerFullScreen && !composerTransitioning else { return }
                     // Only write state when it changes: this runs on every scroll frame, and each
                     // write re-renders the conversation.
@@ -104,12 +105,10 @@ struct ChatView: View {
                     if farFromBottom != far { farFromBottom = far }
                     if endVisible || !value.canScroll || value.distance <= 16 { if !followsBottom { followsBottom = true } }
                     else if isUserScrolling && value.distance > 48 && followsBottom { followsBottom = false }
-                    // Already resting on the bottom edge: scrolling again would only re-measure lazy rows
-                    // and can feed back into another geometry change.
-                    if followsBottom && !isUserScrolling && value.distance > 0.5
-                        && (old.contentHeight != value.contentHeight || old.viewportHeight != value.viewportHeight) {
-                        scrollPosition.scrollTo(edge: .bottom)
-                    }
+                    // No scrolling from here: this runs inside layout. Rows restored from disk start with
+                    // estimated heights, so scrolling to the bottom from a geometry change could realize a row,
+                    // change the content height, and scroll again without end — the send-after-relaunch freeze.
+                    // Pinning on size changes is left to the scroll view's own anchor below.
                 }
                 .safeAreaInset(edge: .top, spacing: 0) {
                     VStack(spacing: 20) {
@@ -271,7 +270,5 @@ private final class ArtworkFrames {
 
 private struct ConversationScrollMetrics: Equatable {
     let distance: CGFloat
-    let contentHeight: CGFloat
-    let viewportHeight: CGFloat
     let canScroll: Bool
 }
