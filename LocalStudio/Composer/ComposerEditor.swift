@@ -14,6 +14,14 @@ struct ComposerEditor: UIViewRepresentable {
     let pasteImageLimit: Int
     let pasteImages: ([Data]) -> Void
 
+    /// Shared by the live editor and every measurement pass.
+    @MainActor static let attributes: [NSAttributedString.Key: Any] = {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.minimumLineHeight = 24
+        paragraph.maximumLineHeight = 24
+        return [.font: UIFont.systemFont(ofSize: 17), .foregroundColor: UIColor.white, .paragraphStyle: paragraph]
+    }()
+
     func makeUIView(context: Context) -> ComposerNativeTextView {
         let view = ComposerNativeTextView(frame: .zero, textContainer: nil)
         view.delegate = context.coordinator
@@ -44,12 +52,7 @@ struct ComposerEditor: UIViewRepresentable {
         context.coordinator.parent = self
         view.receiveImages = pasteImages
         view.pasteImageLimit = pasteImageLimit
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.minimumLineHeight = 24
-        paragraph.maximumLineHeight = 24
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(ofSize: 17), .foregroundColor: UIColor.white, .paragraphStyle: paragraph
-        ]
+        let attributes = Self.attributes
         if view.text != text {
             view.attributedText = NSAttributedString(string: text, attributes: attributes)
             view.selectedRange = NSRange(location: (text as NSString).length, length: 0)
@@ -76,12 +79,7 @@ struct ComposerEditor: UIViewRepresentable {
 
     // A separate TextKit layout measures the target before the live editor animates.
     @MainActor static func measuredHeight(text: String, width: CGFloat, reserve: Bool) -> CGFloat {
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.minimumLineHeight = 24
-        paragraph.maximumLineHeight = 24
-        let storage = NSTextStorage(string: text + "\u{200B}", attributes: [
-            .font: UIFont.systemFont(ofSize: 17), .paragraphStyle: paragraph
-        ])
+        let storage = NSTextStorage(string: text + "\u{200B}", attributes: attributes)
         let layout = NSLayoutManager()
         let container = NSTextContainer(size: CGSize(width: width, height: 168))
         container.maximumNumberOfLines = 7
@@ -145,18 +143,14 @@ final class ComposerNativeTextView: UITextView {
     var receiveImages: (([Data]) -> Void)?
     var pasteImageLimit = 0
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-        let nativeAllowed = super.canPerformAction(action, withSender: sender)
-        let imagePaste = action == #selector(paste(_:)) && pasteImageLimit > 0 && receiveImages != nil && UIPasteboard.general.hasImages
-        let allowed = nativeAllowed || imagePaste
-        return allowed
+        super.canPerformAction(action, withSender: sender)
+            || (action == #selector(paste(_:)) && pasteImageLimit > 0 && receiveImages != nil && UIPasteboard.general.hasImages)
     }
 
     override func paste(_ sender: Any?) {
         let board = UIPasteboard.general
         if board.hasImages {
-            guard pasteImageLimit > 0, let receiveImages else {
-                return
-            }
+            guard pasteImageLimit > 0, let receiveImages else { return }
             // Prefer the clipboard's original encoded representation; only encode
             // when another app supplies a UIImage without original file data.
             let originals: [Data] = board.items.prefix(pasteImageLimit).compactMap { item in
@@ -213,8 +207,8 @@ final class ComposerNativeTextView: UITextView {
         updateExclusionPath()
         super.layoutSubviews()
         placeholder.isHidden = !(text ?? "").isEmpty
-        placeholder.frame = CGRect(x: 0, y: textContainerInset.top + (24 - UIFont.systemFont(ofSize: 17).lineHeight) / 2,
-                                   width: bounds.width, height: UIFont.systemFont(ofSize: 17).lineHeight)
+        let lineHeight = placeholder.font.lineHeight
+        placeholder.frame = CGRect(x: 0, y: textContainerInset.top + (24 - lineHeight) / 2, width: bounds.width, height: lineHeight)
         if !isScrollEnabled && contentOffset != .zero { setContentOffset(.zero, animated: false) }
     }
 }

@@ -82,15 +82,19 @@ enum CanvasAspectRatio: String, CaseIterable, Identifiable {
         return parts[0] / parts[1]
     }
 
-    @MainActor var icon: UIImage {
-        let width = CGFloat(20 * min(1, ratio))
-        let height = CGFloat(20 / max(1, ratio))
-        return UIGraphicsImageRenderer(size: CGSize(width: 24, height: 24)).image { _ in
+    @MainActor var icon: UIImage { Self.icons[self]! }
+
+    /// Rendered once; the settings form re-evaluates on every slider step.
+    @MainActor private static let icons: [CanvasAspectRatio: UIImage] = Dictionary(uniqueKeysWithValues: allCases.map { ratio in
+        let width = CGFloat(20 * min(1, ratio.ratio))
+        let height = CGFloat(20 / max(1, ratio.ratio))
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 24, height: 24)).image { _ in
             UIColor.white.setStroke()
             let outline = UIBezierPath(roundedRect: CGRect(x: (24 - width) / 2, y: (24 - height) / 2,
                                                           width: width, height: height).insetBy(dx: 0.75, dy: 0.75), cornerRadius: 1.5)
             outline.lineWidth = 1.5
             outline.stroke()
         }.withRenderingMode(.alwaysTemplate)
-    }
+        return (ratio, image)
+    })
 }

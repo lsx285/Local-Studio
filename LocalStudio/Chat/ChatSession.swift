@@ -142,23 +142,33 @@ final class ChatSession {
         if messageID == nil && !isImageGeneration {
             messages.append(ChatMessage(id: responseID, role: .assistant, text: ""))
         }
+        let image = isImageGeneration
         generationTask = Task { [weak self] in
             guard let self else { return }
+            // Tokens can arrive far faster than the display refreshes. Each `messages` write
+            // invalidates the whole conversation, so streamed text is applied at most ~30×/s;
+            // the final result always carries the complete text.
+            let clock = ContinuousClock()
+            var lastTextUpdate = clock.now - .seconds(1)
             do {
                 let result = try await connection.run(model: modelID, prompt: prompt, photos: photos.map(\.data), messages: history,
                                                        width: canvasWidth, height: canvasHeight, maxTokens: maxTokens) { event in
                     switch event {
                     case .text(let text):
-                        if let index = self.messages.firstIndex(where: { $0.id == responseID }) {
-                            self.messages[index].text = text
-                            self.messages[index].attachments = []
-                        }
+                        let now = clock.now
+                        guard now - lastTextUpdate >= .milliseconds(33),
+                              let index = self.messages.firstIndex(where: { $0.id == responseID }) else { return }
+                        lastTextUpdate = now
+                        self.messages[index].text = text
+                        if !self.messages[index].attachments.isEmpty { self.messages[index].attachments = [] }
                     case .progress(let value, let total):
-                        self.generationProgress = total > 0 ? Double(value) / Double(total) : nil
-                        self.generationStage = self.isImageGeneration ? "Sampling image..." : "Writing..."
+                        let stage = image ? "Sampling image..." : "Writing..."
+                        if self.generationStage != stage { self.generationStage = stage }
+                        // Text generation shows no progress value, so per-token progress stays silent.
+                        if image { self.generationProgress = total > 0 ? Double(value) / Double(total) : nil }
                     case .stage(let stage):
-                        self.generationStage = stage
-                        if !self.isImageGeneration { self.generationProgress = nil }
+                        if self.generationStage != stage { self.generationStage = stage }
+                        if !image && self.generationProgress != nil { self.generationProgress = nil }
                     }
                 }
                 try Task.checkCancellation()
@@ -166,20 +176,16 @@ final class ChatSession {
                                            attachments: result.images.compactMap { PhotoAttachment(data: $0.data, filename: $0.filename) }, metadata: result.metadata)
                 if let index = messages.firstIndex(where: { $0.id == responseID }) { messages[index] = response }
                 else { messages.append(response) }
-                isGenerating = false
-                respondingMessageID = nil
-                generationTask = nil
-                persist()
             } catch {
                 guard !Task.isCancelled else { return }
                 if let previous, let index = messages.firstIndex(where: { $0.id == responseID }) { messages[index] = previous }
                 messages.removeAll { $0.id == responseID && $0.text.isEmpty && $0.attachments.isEmpty }
-                isGenerating = false
-                respondingMessageID = nil
-                generationTask = nil
                 if !(error is CancellationError) { generationError = error.localizedDescription }
-                persist()
             }
+            isGenerating = false
+            respondingMessageID = nil
+            generationTask = nil
+            persist()
         }
     }
 
@@ -194,10 +200,15 @@ final class ChatSession {
             defer { if !Task.isCancelled { isEnhancing = false; generationTask = nil } }
             do {
                 var streamedDraft = original
+                let clock = ContinuousClock()
+                var lastTextUpdate = clock.now - .seconds(1)
                 let result = try await connection.run(model: model, prompt: original, photos: photos, messages: [], enhance: true,
                                                        width: canvasWidth, height: canvasHeight, maxTokens: maxTokens) { event in
                     guard case .text(let text) = event else { return }
                     guard self.draft == streamedDraft else { self.cancelGeneration(); return }
+                    let now = clock.now
+                    guard now - lastTextUpdate >= .milliseconds(33) else { return }
+                    lastTextUpdate = now
                     self.draft = text
                     streamedDraft = text
                 }

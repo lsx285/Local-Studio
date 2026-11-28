@@ -34,21 +34,23 @@ struct GenerationView: View {
                             .foregroundStyle(GenerationMotion.labelGradient(at: motionElapsed, text: imageStage, reduceMotion: reduceMotion))
                             .frame(height: 21, alignment: .leading)
                         Canvas { context, _ in
-                            let position = min(Double(GenerationMotion.frameCount - 1), max(0, ((reduceMotion ? 12 : motionElapsed) - 1.85) * 59))
+                            let samples = GenerationMotion.samples
+                            let frameCount = GenerationMotion.frameCount
+                            let position = min(Double(frameCount - 1), max(0, ((reduceMotion ? 12 : motionElapsed) - 1.85) * 59))
                             let first = Int(position)
-                            let second = min(first + 1, GenerationMotion.frameCount - 1)
+                            let second = min(first + 1, frameCount - 1)
                             let blend = position - Double(first)
+                            let keep = 1 - blend
                             for row in 0..<30 {
                                 for column in 0..<22 {
                                     let dot = row * 22 + column
                                     let offset = 16 + first * 2704 + dot * 4
                                     let next = 16 + second * 2704 + dot * 4
-                                    let radius = (Double(GenerationMotion.samples[offset]) * (1 - blend)
-                                                  + Double(GenerationMotion.samples[next]) * blend) / 64
+                                    let radius = (Double(samples[offset]) * keep + Double(samples[next]) * blend) / 64
                                     guard radius > 0 else { continue }
-                                    let red = (Double(GenerationMotion.samples[offset + 1]) * (1 - blend) + Double(GenerationMotion.samples[next + 1]) * blend) / 255
-                                    let green = (Double(GenerationMotion.samples[offset + 2]) * (1 - blend) + Double(GenerationMotion.samples[next + 2]) * blend) / 255
-                                    let blue = (Double(GenerationMotion.samples[offset + 3]) * (1 - blend) + Double(GenerationMotion.samples[next + 3]) * blend) / 255
+                                    let red = (Double(samples[offset + 1]) * keep + Double(samples[next + 1]) * blend) / 255
+                                    let green = (Double(samples[offset + 2]) * keep + Double(samples[next + 2]) * blend) / 255
+                                    let blue = (Double(samples[offset + 3]) * keep + Double(samples[next + 3]) * blend) / 255
                                     let x = (10.63 + Double(column) * 13.318)
                                     let y = (9.18 + Double(row) * 13.318)
                                     let rect = CGRect(x: x - radius, y: y - radius,
@@ -82,6 +84,7 @@ private enum GenerationMotion {
     static func labelGradient(at elapsed: Double, text: String, reduceMotion: Bool) -> LinearGradient {
         let frame = min(frameCount - 1, max(0, Int((elapsed - 1.85) * 59)))
         let width = max(1, (text as NSString).size(withAttributes: [.font: UIFont.systemFont(ofSize: 17)]).width)
+        let samples = Self.samples
         let stops = (0..<64).compactMap { index -> Gradient.Stop? in
             let location = Double(index) / 63 * 300 / width
             guard location <= 1 else { return nil }

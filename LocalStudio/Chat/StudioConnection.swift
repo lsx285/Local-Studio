@@ -23,7 +23,7 @@ struct StudioModel: Decodable, Identifiable, Sendable {
     }
 }
 
-struct GenerationMetadata: Codable, Sendable {
+struct GenerationMetadata: Codable, Equatable, Sendable {
     let model: String
     var modelId: String?
     var requestSeconds: Double?
@@ -244,7 +244,9 @@ final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegat
                 while true {
                     try Task.checkCancellation()
                     let message = try await ws.receive()
-                    guard case .string(let string) = message,
+                    // Every event for this request carries its ID; skip parsing everything else
+                    // (status broadcasts, other clients, monitoring extensions) on the main actor.
+                    guard case .string(let string) = message, string.contains(requestID),
                           let data = string.data(using: .utf8),
                           let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                           let type = object["type"] as? String, let payload = object["data"] as? [String: Any] else { continue }

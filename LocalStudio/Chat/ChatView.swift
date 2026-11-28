@@ -3,7 +3,7 @@ import SwiftUI
 struct ChatView: View {
     @Bindable var session: ChatSession
     @State private var followsBottom = true
-    @State private var bottomDistance: CGFloat = 0
+    @State private var farFromBottom = false
     @State private var isUserScrolling = false
     @State private var keyboardVisible = false
     @State private var scrollPosition = ScrollPosition(edge: .bottom)
@@ -12,12 +12,12 @@ struct ChatView: View {
     @State private var composerTransitioning = false
     @State private var settingsPresented = false
     @State private var viewer: ViewerRequest?
-    @State private var imageFrames: [UUID: CGRect] = [:]
+    @State private var imageFrames = ArtworkFrames()
     @State private var endVisible = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var showsScrollButton: Bool {
-        !composerFullScreen && !composerTransitioning && !endVisible && !followsBottom && bottomDistance > 24 && !session.messages.isEmpty
+        !composerFullScreen && !composerTransitioning && !endVisible && !followsBottom && farFromBottom && !session.messages.isEmpty
     }
 
     private func openArtwork(_ id: UUID) {
@@ -38,10 +38,11 @@ struct ChatView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 32) {
                         ForEach(session.messages.filter { !$0.text.isEmpty || !$0.attachments.isEmpty }) { message in
-                            MessageView(message: message, isResponding: session.respondingMessageID == message.id, openArtwork: openArtwork, reportArtworkFrame: { imageFrames[$0] = $1 }, canRetry: !session.isGenerating && !session.isEnhancing && session.connection.isConnected, retryResponse: session.retry) { message in
+                            MessageView(message: message, isResponding: session.respondingMessageID == message.id, availableWidth: max(1, width - 32), openArtwork: openArtwork, reportArtworkFrame: { imageFrames.values[$0] = $1 }, canRetry: !session.isGenerating && !session.isEnhancing && session.connection.isConnected, retryResponse: session.retry) { message in
                                 session.edit(message)
                                 composerFocused = true
                             }
+                            .equatable()
                             .transition(.asymmetric(
                                 insertion: message.role == .user && !reduceMotion
                                     ? .offset(y: max(0, viewportHeight - 116)).combined(with: .opacity) : .opacity,
@@ -55,8 +56,11 @@ struct ChatView: View {
                         Color.clear.frame(height: 1).id("bottom")
                             .onScrollVisibilityChange(threshold: 0.1) { visible in
                                 guard !composerFullScreen && !composerTransitioning else { return }
-                                endVisible = visible
-                                if visible { followsBottom = true; bottomDistance = 0 }
+                                if endVisible != visible { endVisible = visible }
+                                if visible {
+                                    if !followsBottom { followsBottom = true }
+                                    if farFromBottom { farFromBottom = false }
+                                }
                             }
                     }
                     .padding(.horizontal, 16)
@@ -70,7 +74,8 @@ struct ChatView: View {
                 .scrollDismissesKeyboard(composerFullScreen || composerTransitioning ? .never : .interactively)
                 .scrollDisabled(composerFullScreen || composerTransitioning)
                 .onScrollPhaseChange { _, phase in
-                    isUserScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
+                    let scrolling = phase == .tracking || phase == .interacting || phase == .decelerating
+                    if isUserScrolling != scrolling { isUserScrolling = scrolling }
                 }
                 .onScrollGeometryChange(for: ConversationScrollMetrics.self) { geometry in
                     ConversationScrollMetrics(
@@ -81,10 +86,16 @@ struct ChatView: View {
                                    > geometry.containerSize.height + 1)
                 } action: { old, value in
                     guard !composerFullScreen && !composerTransitioning else { return }
-                    bottomDistance = value.distance
-                    if endVisible || !value.canScroll || value.distance <= 16 { followsBottom = true }
-                    else if isUserScrolling && value.distance > 48 { followsBottom = false }
-                    if followsBottom && !isUserScrolling && (old.contentHeight != value.contentHeight || old.viewportHeight != value.viewportHeight) {
+                    // Only write state when it changes: this runs on every scroll frame, and each
+                    // write re-renders the conversation.
+                    let far = value.distance > 24
+                    if farFromBottom != far { farFromBottom = far }
+                    if endVisible || !value.canScroll || value.distance <= 16 { if !followsBottom { followsBottom = true } }
+                    else if isUserScrolling && value.distance > 48 && followsBottom { followsBottom = false }
+                    // Already resting on the bottom edge: scrolling again would only re-measure lazy rows
+                    // and can feed back into another geometry change.
+                    if followsBottom && !isUserScrolling && value.distance > 0.5
+                        && (old.contentHeight != value.contentHeight || old.viewportHeight != value.viewportHeight) {
                         scrollPosition.scrollTo(edge: .bottom)
                     }
                 }
@@ -144,7 +155,7 @@ struct ChatView: View {
                                  openAttachment: { id in
                                      composerFocused = false
                                      viewer = ViewerRequest(photos: session.attachments.map { ViewerPhoto(photo: $0, date: .now) }, selectedID: id, limited: true)
-                                 }, reportAttachmentFrame: { imageFrames[$0] = $1 }) {
+                                 }, reportAttachmentFrame: { imageFrames.values[$0] = $1 }) {
                         followsBottom = true
                         isUserScrolling = false
                         composerFocused = false
@@ -184,7 +195,7 @@ struct ChatView: View {
             }
             .overlay {
                 if let viewer {
-                    ArtworkViewer(request: viewer, sourceFrames: imageFrames, edit: { photo in
+                    ArtworkViewer(request: viewer, sourceFrames: imageFrames.values, edit: { photo in
                         if session.attachments.count < 8, let attachment = PhotoAttachment(data: photo.data) { session.attachments.append(attachment) }
                         composerFocused = true
                     }, remove: { id in
@@ -221,11 +232,14 @@ struct ChatView: View {
             .onChange(of: session.connection.isConnected) {
                 if !session.connection.isConnected { composerFocused = false }
             }
-            .onChange(of: session.messages.last?.text) {
-                if followsBottom { scrollPosition.scrollTo(edge: .bottom) }
-            }
         }
     }
+}
+
+/// Artwork frames are reported on every scroll frame but only read when the viewer opens,
+/// so they live outside observed state and never invalidate the conversation.
+private final class ArtworkFrames {
+    var values: [UUID: CGRect] = [:]
 }
 
 private struct ConversationScrollMetrics: Equatable {

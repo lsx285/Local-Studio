@@ -1,6 +1,6 @@
 import UIKit
 
-struct ChatMessage: Identifiable {
+struct ChatMessage: Identifiable, Equatable {
     enum Role: String, Codable { case user, assistant }
     let id: UUID
     let role: Role
@@ -19,7 +19,7 @@ struct ChatMessage: Identifiable {
     }
 }
 
-struct PhotoAttachment: Identifiable {
+struct PhotoAttachment: Identifiable, Equatable {
     let id: UUID
     let data: Data
     let filename: String?
@@ -32,6 +32,9 @@ struct PhotoAttachment: Identifiable {
         self.filename = filename
         self.image = image
     }
+
+    /// Attachment contents never change after creation, so identity is equality.
+    static func == (lhs: PhotoAttachment, rhs: PhotoAttachment) -> Bool { lhs.id == rhs.id }
 }
 
 /// Only these immutable, Sendable values cross the disk boundary.
@@ -52,9 +55,7 @@ struct ArchivedMessage: Codable, Sendable {
 actor ConversationArchive {
     static let shared = ConversationArchive()
     private var revision = 0
-    private var url: URL {
-        URL.applicationSupportDirectory.appending(path: "conversation.json")
-    }
+    private let url = URL.applicationSupportDirectory.appending(path: "conversation.json")
 
     func load() throws -> [ArchivedMessage] {
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }

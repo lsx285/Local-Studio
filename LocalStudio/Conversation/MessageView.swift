@@ -1,9 +1,10 @@
 import SwiftUI
 import Photos
 
-struct MessageView: View {
+struct MessageView: View, Equatable {
     let message: ChatMessage
     let isResponding: Bool
+    let availableWidth: CGFloat
     let openArtwork: (UUID) -> Void
     let reportArtworkFrame: (UUID, CGRect) -> Void
     let canRetry: Bool
@@ -13,11 +14,18 @@ struct MessageView: View {
     @State private var selectingText = false
     @State private var textSize: CGSize = .zero
 
+    // Callbacks are stable for the conversation's lifetime; comparing only the rendered inputs
+    // lets SwiftUI skip every row except the one that changed (e.g. the streaming response).
+    nonisolated static func == (lhs: MessageView, rhs: MessageView) -> Bool {
+        lhs.message == rhs.message && lhs.isResponding == rhs.isResponding
+            && lhs.canRetry == rhs.canRetry && lhs.availableWidth == rhs.availableWidth
+    }
+
     var body: some View {
         VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 8) {
             if !message.attachments.isEmpty {
                 if message.role == .user {
-                    SentPhotoAttachments(photos: message.attachments)
+                    SentPhotoAttachments(photos: message.attachments, availableWidth: availableWidth)
                 } else {
                     ForEach(message.attachments) { photo in
                         Image(uiImage: photo.image)
@@ -158,7 +166,7 @@ struct MessageView: View {
 /// Sent images use their natural ratio singly, and compact square tiles in a group.
 private struct SentPhotoAttachments: View {
     let photos: [PhotoAttachment]
-    @State private var availableWidth: CGFloat = 398
+    let availableWidth: CGFloat
 
     private var columns: Int { photos.count == 4 ? 2 : min(3, photos.count) }
     private var tileSize: CGFloat { min(128, max(1, (availableWidth - CGFloat(columns - 1) * 4) / CGFloat(columns))) }
@@ -179,7 +187,6 @@ private struct SentPhotoAttachments: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { availableWidth = $0 }
     }
 
     private func fittedSize(_ size: CGSize) -> CGSize {

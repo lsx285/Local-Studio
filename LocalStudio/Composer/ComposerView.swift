@@ -50,35 +50,6 @@ struct ComposerView: View {
         pendingSelection = []
     }
 
-    private var expanded: Bool {
-        fullScreen || inlineExpanded
-    }
-
-    private var inlineExpanded: Bool {
-        session.draft.contains("\n") || (session.draft as NSString).size(withAttributes: [.font: UIFont.systemFont(ofSize: 17)]).width > availableWidth - sideInset * 2 - 100
-    }
-
-    private var inlineEditorHeight: CGFloat {
-        guard inlineExpanded else { return 32 }
-        let width = max(1, availableWidth - 56)
-        return ComposerEditor.measuredHeight(text: session.draft, width: width, reserve: showsExpansionControl)
-    }
-
-    private var sideInset: CGFloat { focused || session.draft.contains("\n") ? 12 : 34 }
-
-    private var draftHeight: CGFloat {
-        let width = max(1, availableWidth - 24 - 32)
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.minimumLineHeight = 24
-        paragraph.maximumLineHeight = 24
-        return ((session.draft + "\u{200B}") as NSString).boundingRect(with: CGSize(width: width, height: .greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: [.font: UIFont.systemFont(ofSize: 17), .paragraphStyle: paragraph], context: nil).height
-    }
-
-    private var overflowing: Bool { draftHeight > 168 }
-    private var showsExpansionControl: Bool { fullScreen || draftHeight >= 96 }
-
     private func pasteImages(_ images: [Data]) {
         guard !loadingPhotos else { return }
         for data in images.prefix(max(0, 8 - session.attachments.count)) {
@@ -90,9 +61,22 @@ struct ComposerView: View {
         }
     }
 
-    private var horizontalInset: CGFloat { fullScreen ? 0 : expanded || focused ? 12 : 34 }
-
     var body: some View {
+        // Text measurement is the composer's costliest work, and the body re-evaluates whenever the
+        // conversation changes, so every draft metric is computed exactly once per pass.
+        let draft = session.draft
+        let multiline = draft.contains("\n")
+        let sideInset: CGFloat = focused || multiline ? 12 : 34
+        let inlineExpanded = multiline || (draft as NSString).size(withAttributes: ComposerEditor.attributes).width > availableWidth - sideInset * 2 - 100
+        let expanded = fullScreen || inlineExpanded
+        let draftHeight = ((draft + "\u{200B}") as NSString).boundingRect(with: CGSize(width: max(1, availableWidth - 24 - 32), height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: ComposerEditor.attributes, context: nil).height
+        let overflowing = draftHeight > 168
+        let showsExpansionControl = fullScreen || draftHeight >= 96
+        let inlineEditorHeight = inlineExpanded
+            ? ComposerEditor.measuredHeight(text: draft, width: max(1, availableWidth - 56), reserve: showsExpansionControl) : 32
+        let horizontalInset: CGFloat = fullScreen ? 0 : expanded || focused ? 12 : 34
+        let canSend = session.canSend
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 Menu {
@@ -206,10 +190,10 @@ struct ComposerView: View {
                         }
                         .frame(width: 32, height: 32)
                     }
-                    .disabled(!session.isGenerating && !session.canSend)
-                    .opacity(session.isGenerating || session.canSend ? 1 : 0)
-                    .allowsHitTesting(session.isGenerating || session.canSend)
-                    .accessibilityHidden(!session.isGenerating && !session.canSend)
+                    .disabled(!session.isGenerating && !canSend)
+                    .opacity(session.isGenerating || canSend ? 1 : 0)
+                    .allowsHitTesting(session.isGenerating || canSend)
+                    .accessibilityHidden(!session.isGenerating && !canSend)
                     .accessibilityLabel(session.isGenerating ? "Stop generation" : "Send prompt")
 
                 }
