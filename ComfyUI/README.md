@@ -6,7 +6,7 @@ To reproduce manually, apply `text-streaming.patch` from the ComfyUI repository 
 
 The patch adds a context-local token callback to Qwen's existing autoregressive decoder, checks cancellation between tokens, and includes the quantization publisher's Qwen 2.1 NVFP4 conditioning correction. The V3 output node streams cumulative decoded text as `local_studio_text` WebSocket events, scoped by request and client. Text and images execute on ComfyUI's existing queue with native model loading and memory management.
 
-The extension advertises `_localstudio._tcp` through multicast DNS, exposes `/local-studio/catalog` and builds native graphs at `/local-studio/workflow`. The iPhone uploads original attachments, submits graphs through `/prompt`, receives progress and text on `/ws`, then retrieves saved output through `/history` and `/view`. Cancellation targets the specific job, leaving other clients' jobs alone. All inference traffic remains on the local network.
+The extension advertises `_localstudio._tcp` through multicast DNS, exposes `/local-studio/catalog`, and `/local-studio/run` builds the native graph and queues it through ComfyUI's `/prompt` in one call. The iPhone uploads original attachments, receives progress, streamed text deltas and the final output on `/ws`, then downloads saved images through `/view`. Cancellation targets the specific job, leaving other clients' jobs alone. All inference traffic remains on the local network.
 
 Windows Firewall needs inbound TCP 8188 and UDP 5353 on the private local network. Both dedicated private-network firewall rules are enabled.
 

@@ -1,6 +1,6 @@
 import socket
 
-from aiohttp import web
+from aiohttp import ClientSession, web
 from pillow_heif import register_heif_opener
 from zeroconf import IPVersion, ServiceInfo
 from zeroconf.asyncio import AsyncZeroconf
@@ -29,13 +29,17 @@ class LocalStudioTextStream(io.ComfyNode):
 
     @classmethod
     def execute(cls, clip, prompt, client_id, request_id, max_tokens, seed, images=None):
-        def emit(ids):
-            text = clip.decode(ids)
-            if not text.endswith("\ufffd"):
-                PromptServer.instance.send_sync("local_studio_text", {"request_id": request_id, "text": text}, client_id)
+        sent = 0
 
-        image_list = [image for image in (images or {}).values()]
-        tokens = clip.tokenize(prompt, images=image_list, skip_template=True, llama_template="{}", min_length=1)
+        def emit(ids):
+            # Stream only the new characters; a trailing replacement character waits for the rest of its UTF-8 sequence.
+            nonlocal sent
+            text = clip.decode(ids)
+            if len(text) > sent and not text.endswith("�"):
+                PromptServer.instance.send_sync("local_studio_text", {"request_id": request_id, "delta": text[sent:]}, client_id)
+                sent = len(text)
+
+        tokens = clip.tokenize(prompt, images=list((images or {}).values()), skip_template=True, llama_template="{}", min_length=1)
         context = generation_token_callback.set(emit)
         try:
             result = clip.generate(tokens, max_length=max_tokens, temperature=0.7, top_k=20,
@@ -48,15 +52,25 @@ class LocalStudioTextStream(io.ComfyNode):
 
 @PromptServer.instance.routes.get("/local-studio/catalog")
 async def get_catalog(request):
-    return web.json_response({"version": 1, "models": catalog()})
+    return web.json_response({"version": 2, "models": catalog()})
 
 
-@PromptServer.instance.routes.post("/local-studio/workflow")
-async def workflow(request):
+@PromptServer.instance.routes.post("/local-studio/run")
+async def run(request):
+    """Builds the workflow and queues it through ComfyUI's own /prompt route in one call; returns the result metadata."""
+    body = await request.json()
     try:
-        return web.json_response(build_workflow(await request.json()))
+        workflow = build_workflow(body)
     except (KeyError, ValueError) as error:
         return web.json_response({"error": str(error)}, status=400)
+    host = args.listen.split(",")[0].strip()
+    host = {"0.0.0.0": "127.0.0.1", "::": "[::1]", "": "127.0.0.1"}.get(host, f"[{host}]" if ":" in host else host)
+    async with ClientSession() as session:
+        async with session.post(f"http://{host}:{args.port}/prompt", json={
+                "prompt": workflow["prompt"], "client_id": body["client_id"], "prompt_id": body["request_id"]}) as response:
+            if response.status != 200:
+                return web.Response(status=response.status, text=await response.text(), content_type="application/json")
+    return web.json_response(workflow["metadata"])
 
 
 async def advertise(app):

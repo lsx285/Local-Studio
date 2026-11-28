@@ -62,6 +62,17 @@ enum StudioEvent {
     case stage(String)
 }
 
+/// The output node's UI result: streamed text, or saved images to download.
+private struct StudioOutput: Decodable {
+    struct ImageReference: Decodable {
+        let filename: String
+        let subfolder: String
+        let type: String
+    }
+    let text: [String]?
+    let images: [ImageReference]?
+}
+
 private struct StudioError: LocalizedError {
     let message: String
     var errorDescription: String? { message }
@@ -141,7 +152,7 @@ final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegat
             struct Catalog: Decodable { let version: Int; let models: [StudioModel] }
             let catalog = try JSONDecoder().decode(Catalog.self, from: data)
             guard candidate == connectedService else { return }
-            guard catalog.version == 1 else { throw StudioError(message: "Update the Local Studio ComfyUI extension.") }
+            guard catalog.version == 2 else { throw StudioError(message: "Update the Local Studio ComfyUI extension.") }
             models = catalog.models
             isConnected = true
             status = "Connected"
@@ -233,18 +244,18 @@ final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegat
                     event(.stage("Uploading original image…"))
                     filenames.append(try await upload(photo))
                 }
-                let workflowData = try await request("local-studio/workflow", body: [
+                try Task.checkCancellation()
+                // One call builds the workflow on the PC and queues it under this request's ID.
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                var metadata = try decoder.decode(GenerationMetadata.self, from: await request("local-studio/run", body: [
                     "model": model, "prompt": prompt, "images": filenames, "messages": messages,
                     "enhance": enhance, "client_id": clientID, "request_id": requestID,
                     "width": width, "height": height, "max_tokens": maxTokens
-                ])
-                let workflow = try JSONSerialization.jsonObject(with: workflowData) as! [String: Any]
-                let decoder = JSONDecoder()
-                decoder.keyDecodingStrategy = .convertFromSnakeCase
-                var metadata = try decoder.decode(GenerationMetadata.self, from: JSONSerialization.data(withJSONObject: workflow["metadata"]!))
-                try Task.checkCancellation()
-                _ = try await request("prompt", body: ["prompt": workflow["prompt"]!, "client_id": clientID, "prompt_id": requestID])
+                ]))
                 event(.stage("Queued on your PC…"))
+                var text = ""
+                var output: StudioOutput?
                 while true {
                     try Task.checkCancellation()
                     let message = try await ws.receive()
@@ -255,18 +266,25 @@ final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegat
                           let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                           let type = object["type"] as? String, let payload = object["data"] as? [String: Any] else { continue }
                     if type == "local_studio_text", payload["request_id"] as? String == requestID {
-                        event(.text(payload["text"] as? String ?? ""))
+                        // The PC streams only new characters; the app always sees the full text so far.
+                        text += payload["delta"] as? String ?? ""
+                        event(.text(text))
                         continue
                     }
                     guard payload["prompt_id"] as? String == requestID else { continue }
                     switch type {
+                    case "executed":
+                        // The output node's result arrives here, so no history lookup is needed afterwards.
+                        if payload["node"] as? String == "output", let value = payload["output"] {
+                            output = try? JSONDecoder().decode(StudioOutput.self, from: JSONSerialization.data(withJSONObject: value))
+                        }
                     case "execution_start": event(.stage("Loading model…"))
                     case "executing":
                         if let node = payload["node"] as? String {
                             event(.stage(node == "decode" ? "Decoding image…" : node == "output" ? "Saving result…" : "Running model…"))
                         } else if payload["node"] is NSNull {
                             metadata.requestSeconds = Date.now.timeIntervalSince(started)
-                            return try await result(requestID, metadata: metadata)
+                            return try await result(requestID, output: output, metadata: metadata)
                         }
                     case "progress":
                         if isImageRequest && payload["node"] as? String != "sample" { continue }
@@ -294,20 +312,14 @@ final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegat
         }
     }
 
-    private func result(_ id: String, metadata: GenerationMetadata) async throws -> StudioResult {
-        let data = try await request("history/\(id)")
-        struct ImageReference: Decodable {
-            let filename: String
-            let subfolder: String
-            let type: String
+    private func result(_ id: String, output: StudioOutput?, metadata: GenerationMetadata) async throws -> StudioResult {
+        var output = output
+        if output == nil {
+            // A cached run skips the executed event; history still holds its outputs.
+            struct Entry: Decodable { let outputs: [String: StudioOutput] }
+            output = try JSONDecoder().decode([String: Entry].self, from: await request("history/\(id)"))[id]?.outputs["output"]
         }
-        struct Output: Decodable {
-            let text: [String]?
-            let images: [ImageReference]?
-        }
-        struct Entry: Decodable { let outputs: [String: Output] }
-        let history = try JSONDecoder().decode([String: Entry].self, from: data)
-        guard let output = history[id]?.outputs["output"] else { throw StudioError(message: "ComfyUI returned no result.") }
+        guard let output else { throw StudioError(message: "ComfyUI returned no result.") }
         var images: [StudioImage] = []
         for image in output.images ?? [] {
             guard let baseURL else { throw StudioError(message: "Your PC disconnected before the image downloaded.") }
