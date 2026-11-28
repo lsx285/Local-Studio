@@ -6,7 +6,6 @@ from zeroconf import IPVersion, ServiceInfo
 from zeroconf.asyncio import AsyncZeroconf
 
 from comfy.cli_args import args
-from comfy.samplers import KSampler
 from comfy.text_encoders.llama import generation_token_callback
 from comfy_api.latest import ComfyExtension, io
 from server import PromptServer
@@ -53,7 +52,7 @@ class LocalStudioTextStream(io.ComfyNode):
 
 @PromptServer.instance.routes.get("/local-studio/catalog")
 async def get_catalog(request):
-    return web.json_response({"version": 3, "models": catalog(), "samplers": KSampler.SAMPLERS, "schedulers": KSampler.SCHEDULERS})
+    return web.json_response({"version": 2, "models": catalog()})
 
 
 @PromptServer.instance.routes.post("/local-studio/run")
