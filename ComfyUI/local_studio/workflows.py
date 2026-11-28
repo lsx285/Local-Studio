@@ -126,7 +126,7 @@ def build_workflow(body):
         latent = ["encode", 2] if refs else node("latent", "EmptyLatentImage", width=width, height=height, batch_size=1)
     else:
         if model["family"] == "moss":
-            negative_prompt = "nsfw, worst quality, bad anatomy, watermark, jpeg artifact"
+            negative_prompt = "worst quality, bad anatomy, watermark, jpeg artifact"
         positive = node("positive", "CLIPTextEncode", clip=clip, text=prompt)
         negative = node("negative", "CLIPTextEncode", clip=clip, text=negative_prompt)
         latent = node("latent", "EmptyFlux2LatentImage", width=width, height=height, batch_size=1)
