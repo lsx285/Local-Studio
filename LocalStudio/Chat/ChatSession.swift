@@ -41,11 +41,12 @@ final class ChatSession {
     private var restored = false
 
     var hasPrompt: Bool { !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-    /// How many more photos the composer accepts.
-    var attachmentSlots: Int { max(0, 8 - attachments.count) }
+    /// How many more photos the selected model accepts.
+    var attachmentSlots: Int { max(0, (selectedModel?.maxImages ?? 0) - attachments.count) }
     var canSend: Bool {
         guard connection.isConnected, let model = selectedModel, model.installed, !isEnhancing else { return false }
         if model.family != "chat" && !(attachments.isEmpty ? model.generation : model.editing) { return false }
+        if attachments.count > model.maxImages { return false }
         return hasPrompt || !attachments.isEmpty
     }
     var canEnhance: Bool {
@@ -209,7 +210,8 @@ final class ChatSession {
         guard canEnhance else { return }
         let original = draft
         let model = selectedModelID
-        let photos = attachments.map(\.data)
+        // Enhancement runs on the chat model, which may take fewer photos than the selected one.
+        let photos = attachments.prefix(connection.models.first { $0.family == "chat" }?.maxImages ?? 0).map(\.data)
         isEnhancing = true
         generationTask = Task { [weak self] in
             guard let self else { return }

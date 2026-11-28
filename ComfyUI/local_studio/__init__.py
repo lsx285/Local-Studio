@@ -52,7 +52,7 @@ class LocalStudioTextStream(io.ComfyNode):
 
 @PromptServer.instance.routes.get("/local-studio/catalog")
 async def get_catalog(request):
-    return web.json_response({"version": 2, "models": catalog()})
+    return web.json_response({"version": 3, "models": catalog()})
 
 
 @PromptServer.instance.routes.post("/local-studio/run")

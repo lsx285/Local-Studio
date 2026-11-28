@@ -9,6 +9,8 @@ struct StudioModel: Decodable, Identifiable, Sendable {
     let family: String
     let generation: Bool
     let editing: Bool
+    /// Most photos one request may carry: what the model was trained on, or what its node takes.
+    let maxImages: Int
     let installed: Bool
     let steps: Int
     let cfg: Double
@@ -146,9 +148,11 @@ final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegat
         do {
             let data = try await request("local-studio/catalog", timeout: 4)
             struct Catalog: Decodable { let version: Int; let models: [StudioModel] }
-            let catalog = try JSONDecoder().decode(Catalog.self, from: data)
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            let catalog = try decoder.decode(Catalog.self, from: data)
             guard candidate == connectedService else { return }
-            guard catalog.version == 2 else { throw StudioError(message: "Update the Local Studio ComfyUI extension.") }
+            guard catalog.version == 3 else { throw StudioError(message: "Update the Local Studio ComfyUI extension.") }
             models = catalog.models
             isConnected = true
             status = "Connected"

@@ -7,18 +7,18 @@ import folder_paths
 
 
 MODELS = [
-    dict(id="qwen-chat", name="Qwen Heretic", family="chat", generation=False, editing=False,
+    dict(id="qwen-chat", name="Qwen Heretic", family="chat", generation=False, editing=False, max_images=8,
          encoder="qwen3-vl-4b-heretic_nvfp4.safetensors", clip_type="stable_diffusion", steps=0, cfg=0, sampler="", scheduler=""),
-    dict(id="fibo-dev", name="Fibo 2.0 Dev", family="fibo", generation=True, editing=True,
+    dict(id="fibo-dev", name="Fibo 2.0 Dev", family="fibo", generation=True, editing=True, max_images=4,
          weights="fibo2_dev_nvfp4.safetensors", encoder="qwen3vl_4b_bf16.safetensors",
          vae="flux2-vae.safetensors", clip_type="fibo2", steps=50, cfg=5, sampler="euler", scheduler="simple"),
-    dict(id="moss-sft", name="MOSS Image SFT", family="moss", generation=True, editing=False,
+    dict(id="moss-sft", name="MOSS Image SFT", family="moss", generation=True, editing=False, max_images=0,
          weights="moss_image_sft_nvfp4.safetensors", encoder="qwen3.5_9b_w4a8_gptq.safetensors",
          vae="flux2-vae_small.safetensors", clip_type="moss_image", steps=25, cfg=2.5, sampler="er_sde", scheduler="simple"),
-    dict(id="fibo-edit", name="Fibo 2.0 Edit Turbo", family="fibo", generation=False, editing=True,
+    dict(id="fibo-edit", name="Fibo 2.0 Edit Turbo", family="fibo", generation=False, editing=True, max_images=4,
          weights="fibo2_edit_turbo_nvfp4.safetensors", encoder="qwen3vl_4b_bf16.safetensors",
          vae="flux2-vae.safetensors", clip_type="fibo2", steps=4, cfg=1, sampler="euler", scheduler="simple"),
-    dict(id="qwen-image", name="Qwen Image 2.1", family="qwen", generation=True, editing=True,
+    dict(id="qwen-image", name="Qwen Image 2.1", family="qwen", generation=True, editing=True, max_images=10,
          weights="qwen_image_2.1_nvfp4.safetensors", encoder="qwen3vl_8b_nvfp4.safetensors",
          vae="qwen_image_2.1_vae_bf16.safetensors", clip_type="qwen_image", steps=40, cfg=1, sampler="euler", scheduler="simple"),
 ]
@@ -55,6 +55,9 @@ def build_workflow(body):
         raise ValueError("This model supports generation only. Choose an editing model for attachments.")
     if not text_mode and not images and not model["generation"]:
         raise ValueError("This model needs an image to edit.")
+    # Text requests send the images to the chat model, whatever model is selected.
+    if len(images) > (MODELS[0] if text_mode else model)["max_images"]:
+        raise ValueError("Too many images for this model.")
     seed = secrets.randbelow(2**53)
     graph = {}
 

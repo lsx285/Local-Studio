@@ -95,7 +95,7 @@ struct ComposerView: View {
                             Label("\(model.name) · \(model.capability)",
                                   systemImage: session.selectedModelID == model.id ? "checkmark" : "circle")
                         }
-                        .disabled(!model.installed || session.isGenerating || session.isEnhancing)
+                        .disabled(!model.installed || session.isGenerating || session.isEnhancing || session.attachments.count > model.maxImages)
                     }
                 } label: {
                     HStack(spacing: 5) {
