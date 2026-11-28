@@ -57,7 +57,6 @@ struct ArtworkInfoView: View {
                 VStack(spacing: 12) {
                     field("Seed", String(metadata.seed))
                     field("Schedule", metadata.scheduler)
-                    if let shift = metadata.shift { field("Shift", shift.formatted()) }
                     if let seconds = metadata.requestSeconds {
                         field("Request time", seconds.formatted(.number.precision(.fractionLength(1))) + " s")
                     }
