@@ -38,7 +38,9 @@ struct ArtworkViewer: View {
     @State private var expanded = false
     @State private var ready = false
     @State private var closing = false
-    @State private var info = false
+    @State private var infoProgress: CGFloat = 0
+    @State private var infoDragStart: CGFloat?
+    @State private var infoGestureRejected = false
     @State private var chrome = true
     @State private var zoomed = false
     @State private var confirmDelete = false
@@ -65,7 +67,48 @@ struct ArtworkViewer: View {
         }
     }
 
-    private func toggleInfo() { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) { info.toggle() } }
+    private var info: Bool { infoProgress > 0.5 }
+
+    private func settleInfo(_ open: Bool) {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) { infoProgress = open ? 1 : 0 }
+    }
+
+    private func toggleInfo() { settleInfo(!info) }
+
+    private var infoGesture: some Gesture {
+        DragGesture(minimumDistance: 10)
+            .onChanged { value in
+                guard ready, !closing, !zoomed, !request.limited, !infoGestureRejected else { return }
+                if infoDragStart == nil {
+                    guard abs(value.translation.height) > abs(value.translation.width) * 1.25 else {
+                        infoGestureRejected = true
+                        return
+                    }
+                    infoDragStart = infoProgress
+                    chrome = true
+                }
+                guard let start = infoDragStart else { return }
+                // Direct manipulation: no easing or queued animation while the finger moves.
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    infoProgress = min(1, max(0, start - value.translation.height / 290))
+                }
+            }
+            .onEnded { value in
+                let start = infoDragStart
+                let rejected = infoGestureRejected
+                infoDragStart = nil
+                infoGestureRejected = false
+                guard !zoomed, !closing, !rejected else { return }
+                if let start, start > 0 || value.translation.height < 0 {
+                    let projected = start - value.predictedEndTranslation.height / 290
+                    settleInfo(projected > 0.5)
+                } else if value.translation.height > 90 && abs(value.translation.height) > abs(value.translation.width) * 1.5 {
+                    close()
+                }
+            }
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -77,8 +120,9 @@ struct ArtworkViewer: View {
             let origin = geometry.frame(in: .global).origin
             let source = transitionSource?.offsetBy(dx: -origin.x, dy: -origin.y)
             let area = chrome
-                ? CGRect(x: 0, y: info ? 0 : top + 54, width: size.width,
-                         height: max(100, info ? size.height - bottom - 360 : size.height - top - bottom - 154))
+                ? CGRect(x: 0, y: (top + 54) * (1 - infoProgress), width: size.width,
+                         height: max(100, (size.height - top - bottom - 154) * (1 - infoProgress)
+                                     + (size.height - bottom - 360) * infoProgress))
                 : CGRect(origin: .zero, size: size)
             let ratio = current.photo.image.size.width / max(1, current.photo.image.size.height)
             let width = max(1, min(area.width, area.height * ratio))
@@ -89,7 +133,7 @@ struct ArtworkViewer: View {
                 Color.black.opacity(expanded ? 1 : 0).ignoresSafeArea()
                 TabView(selection: $selected) {
                     ForEach(request.photos) { item in
-                        ZoomArtwork(image: item.photo.image, area: area, reduceMotion: reduceMotion, zoomed: $zoomed) {
+                        ZoomArtwork(image: item.photo.image, area: area, reduceMotion: reduceMotion, interactiveLayout: infoDragStart != nil, zoomed: $zoomed) {
                             withAnimation(motion) { chrome.toggle() }
                         }
                         .ignoresSafeArea(.container, edges: .all)
@@ -100,9 +144,6 @@ struct ArtworkViewer: View {
                     .ignoresSafeArea(.container, edges: .all)
                     .frame(width: size.width, height: size.height)
                     .position(x: size.width / 2, y: size.height / 2)
-                    .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded { value in
-                        if !zoomed && !info && abs(value.translation.height) > 90 && abs(value.translation.height) > abs(value.translation.width) * 1.5 { close() }
-                    })
                     .opacity(ready ? 1 : 0)
                     .allowsHitTesting(ready && !closing)
                     .accessibilityHidden(!ready)
@@ -144,8 +185,8 @@ struct ArtworkViewer: View {
                         .tint(.white)
                     }
                     .padding(.horizontal, 20).padding(.top, top)
-                    .opacity(expanded && !info ? 1 : 0)
-                    .allowsHitTesting(!info)
+                    .opacity(expanded ? 1 - infoProgress : 0)
+                    .allowsHitTesting(infoProgress < 0.01)
 
                     if !request.limited {
                         RoundedRectangle(cornerRadius: 20).fill(Color(white: 0.1))
@@ -153,9 +194,9 @@ struct ArtworkViewer: View {
                             .padding(.horizontal, 28)
                             .padding(.bottom, max(12, bottom - 6) + 62)
                             .frame(maxHeight: .infinity, alignment: .bottom)
-                            .offset(y: info ? 0 : 290)
-                            .opacity(info && expanded ? 1 : 0)
-                            .allowsHitTesting(info)
+                            .offset(y: 290 * (1 - infoProgress))
+                            .opacity(expanded ? infoProgress : 0)
+                            .allowsHitTesting(infoProgress > 0.01)
                     }
                     VStack(spacing: 14) {
                         GeometryReader { rail in
@@ -186,8 +227,8 @@ struct ArtworkViewer: View {
                         }
                         .frame(height: 34)
                         .padding(.horizontal, -28)
-                        .opacity(info ? 0 : 1)
-                        .allowsHitTesting(!info)
+                        .opacity(1 - infoProgress)
+                        .allowsHitTesting(infoProgress < 0.01)
                         HStack {
                             ShareLink(item: Image(uiImage: current.photo.image), preview: SharePreview("Artwork", image: Image(uiImage: current.photo.image))) {
                                 StudioIcon(.viewerShare).frame(width: 48, height: 48)
@@ -214,6 +255,7 @@ struct ArtworkViewer: View {
                     .opacity(expanded ? 1 : 0)
                 }
             }
+            .simultaneousGesture(infoGesture)
             .foregroundStyle(.white).tint(.white)
             .onAppear {
                 withAnimation(motion, completionCriteria: .removed) { expanded = true } completion: { if !closing { ready = true } }
@@ -231,6 +273,7 @@ private struct ZoomArtwork: UIViewRepresentable {
     let image: UIImage
     let area: CGRect
     let reduceMotion: Bool
+    let interactiveLayout: Bool
     @Binding var zoomed: Bool
     let tap: () -> Void
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -240,6 +283,7 @@ private struct ZoomArtwork: UIViewRepresentable {
         view.minimumZoomScale = 1; view.maximumZoomScale = 6
         view.showsVerticalScrollIndicator = false; view.showsHorizontalScrollIndicator = false
         view.contentInsetAdjustmentBehavior = .never
+        view.bounces = false
         view.addSubview(view.contentImage)
         let double = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.doubleTap(_:)))
         double.numberOfTapsRequired = 2; view.addGestureRecognizer(double)
@@ -249,7 +293,7 @@ private struct ZoomArtwork: UIViewRepresentable {
     }
     func updateUIView(_ view: ArtworkScrollView, context: Context) {
         context.coordinator.parent = self
-        view.configure(image: image, area: area, animated: !reduceMotion)
+        view.configure(image: image, area: area, animated: !reduceMotion && !interactiveLayout)
     }
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: ArtworkScrollView, context: Context) -> CGSize? {
         CGSize(width: proposal.width ?? 1, height: proposal.height ?? 1)
@@ -313,7 +357,11 @@ private final class ArtworkScrollView: UIScrollView {
             self.contentOffset = CGPoint(x: -insets.left, y: -insets.top)
         }
         if animated { UIView.animate(withDuration: 0.3, delay: 0, options: [.beginFromCurrentState, .curveEaseInOut], animations: layout) }
-        else { UIView.performWithoutAnimation(layout) }
+        else {
+            contentImage.layer.removeAllAnimations()
+            layer.removeAllAnimations()
+            UIView.performWithoutAnimation(layout)
+        }
         configuring = false
     }
 
