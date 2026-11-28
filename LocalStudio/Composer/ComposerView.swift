@@ -59,6 +59,7 @@ struct ComposerView: View {
             }
             withAnimation(railAnimation) { session.attachments.append(photo) }
         }
+        if !images.isEmpty { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
     }
 
     var body: some View {
@@ -82,6 +83,7 @@ struct ComposerView: View {
                 Menu {
                     ForEach(session.connection.models) { model in
                         Button {
+                            if session.selectedModelID != model.id { UISelectionFeedbackGenerator().selectionChanged() }
                             session.selectedModelID = model.id
                             session.saveSettings()
                         } label: {
@@ -102,8 +104,13 @@ struct ComposerView: View {
                 .tint(.white)
                 Spacer(minLength: 4)
                 Button {
-                    if session.isEnhancing { session.cancelGeneration() }
-                    else { session.enhancePrompt() }
+                    if session.isEnhancing {
+                        UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.7)
+                        session.cancelGeneration()
+                    } else {
+                        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                        session.enhancePrompt()
+                    }
                 } label: {
                     TimelineView(.animation(minimumInterval: 1 / 30, paused: !session.isEnhancing)) { timeline in
                         HStack(spacing: 5) {
@@ -130,6 +137,7 @@ struct ComposerView: View {
                                 .onTapGesture { openAttachment(attachment.id) }
                                 .overlay(alignment: .topTrailing) {
                                     Button {
+                                        UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: 0.7)
                                         withAnimation(railAnimation) { session.attachments.removeAll { $0.id == attachment.id } }
                                     } label: {
                                         StudioIcon(.close)
@@ -165,6 +173,7 @@ struct ComposerView: View {
                 HStack(alignment: .center, spacing: 12) {
                     if !fullScreen {
                         Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             focused = false
                             pendingSelection = []
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { pickerPresented = true }
@@ -181,8 +190,14 @@ struct ComposerView: View {
                     }
                     Spacer(minLength: 0)
                     Button {
-                        if session.isGenerating { session.cancelGeneration() }
-                        else { fullScreen = false; send() }
+                        if session.isGenerating {
+                            UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                            session.cancelGeneration()
+                        } else {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            fullScreen = false
+                            send()
+                        }
                     } label: {
                         ZStack {
                             Circle().fill(StudioPalette.accent)
@@ -257,6 +272,7 @@ struct ComposerView: View {
 
                             Spacer()
                             Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 pickerPresented = false
                                 if pendingSelection.isEmpty { fullPickerPresented = true }
                                 else {
@@ -311,6 +327,7 @@ struct ComposerView: View {
             }
             selection = []
         }
+        .sensoryFeedback(.error, trigger: photoError) { _, new in new }
         .alert("Photo couldn’t be opened", isPresented: $photoError) {
             Button("OK", role: .cancel) { }
         } message: { Text("Try another photo or download the original from iCloud first.") }

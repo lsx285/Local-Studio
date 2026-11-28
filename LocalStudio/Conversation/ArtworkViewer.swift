@@ -62,7 +62,10 @@ struct ArtworkViewer: View {
         withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) { infoProgress = open ? 1 : 0 }
     }
 
-    private func toggleInfo() { settleInfo(!info) }
+    private func toggleInfo() {
+        UISelectionFeedbackGenerator().selectionChanged()
+        settleInfo(!info)
+    }
 
     private var infoGesture: some Gesture {
         DragGesture(minimumDistance: 10)
@@ -97,8 +100,10 @@ struct ArtworkViewer: View {
                 guard !zoomed, !closing, !rejected else { return }
                 if let start, start > 0 || value.translation.height < 0 {
                     let projected = start - value.predictedEndTranslation.height / 290
+                    if (projected > 0.5) != (start > 0.5) { UISelectionFeedbackGenerator().selectionChanged() }
                     settleInfo(projected > 0.5)
                 } else if value.translation.height > 90 && abs(value.translation.height) > abs(value.translation.width) * 1.5 {
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
                     close()
                 }
             }
@@ -164,11 +169,17 @@ struct ArtworkViewer: View {
                         }.glassEffect(.regular.interactive(), in: .capsule)
                         Spacer()
                         Menu {
-                            Button { UIPasteboard.general.image = current.photo.image } label: {
+                            Button {
+                                UIPasteboard.general.image = current.photo.image
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            } label: {
                                 Label { Text("Copy") } icon: { StudioIcon(.copy) }
                             }
                             if !request.limited {
-                                Button { let photo = current.photo; close { edit(photo) } } label: {
+                                Button {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    let photo = current.photo; close { edit(photo) }
+                                } label: {
                                     Label { Text("Edit") } icon: { StudioIcon(.edit) }
                                 }
                             }
@@ -248,7 +259,10 @@ struct ArtworkViewer: View {
                                         .frame(width: 44, height: 48)
                                     }
                                         .accessibilityLabel("Info")
-                                    Button { let photo = current.photo; close { edit(photo) } } label: {
+                                    Button {
+                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                        let photo = current.photo; close { edit(photo) }
+                                    } label: {
                                         StudioIcon(.viewerEdit).frame(width: 44, height: 48)
                                     }.accessibilityLabel("Edit in chat")
                                 }.padding(.horizontal, 12).glassEffect(.regular.interactive(), in: .capsule)
@@ -274,8 +288,13 @@ struct ArtworkViewer: View {
                 withAnimation(motion, completionCriteria: .logicallyComplete) { expanded = true } completion: { if !closing { ready = true } }
             }
             .onChange(of: selected) { zoomed = false; infoScrollOffset = 0 }
+            .sensoryFeedback(.selection, trigger: selected)
+            .sensoryFeedback(.warning, trigger: confirmDelete) { _, new in new }
             .confirmationDialog("Delete image?", isPresented: $confirmDelete, titleVisibility: .visible) {
-                Button("Delete", role: .destructive) { let id = selected; close { remove(id) } }
+                Button("Delete", role: .destructive) {
+                    UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                    let id = selected; close { remove(id) }
+                }
             }
         }
         .ignoresSafeArea()
@@ -356,6 +375,7 @@ private struct ZoomArtwork: UIViewRepresentable {
         @objc func singleTap() { parent.tap() }
         @objc func doubleTap(_ gesture: UITapGestureRecognizer) {
             guard let scroll = gesture.view as? ArtworkScrollView else { return }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: 0.6)
             if scroll.zoomScale > 1.01 { scroll.setZoomScale(1, animated: true) }
             else {
                 let point = gesture.location(in: scroll.contentImage)

@@ -31,6 +31,10 @@ final class ChatSession {
     var storageError: String?
     var generationStarted = Date.now
     var editingMessageID: UUID?
+    /// Increments once per finished response; drives completion haptics.
+    private(set) var completedResponses = 0
+    /// The response being regenerated, restored if the retry is stopped.
+    private var retryOriginal: ChatMessage?
     private var revision = 0
     private var generationTask: Task<Void, Never>?
     private var restored = false
@@ -141,6 +145,13 @@ final class ChatSession {
         respondingMessageID = responseID
         if messageID == nil && !isImageGeneration {
             messages.append(ChatMessage(id: responseID, role: .assistant, text: ""))
+        } else if let index = messages.firstIndex(where: { $0.id == responseID }) {
+            // A retry hides the response it replaces at once; the new one streams or appears in its place.
+            retryOriginal = messages[index]
+            withAnimation(.easeOut(duration: 0.2)) {
+                messages[index].text = ""
+                messages[index].attachments = []
+            }
         }
         let image = isImageGeneration
         generationTask = Task { [weak self] in
@@ -176,6 +187,7 @@ final class ChatSession {
                                            attachments: result.images.compactMap { PhotoAttachment(data: $0.data, filename: $0.filename) }, metadata: result.metadata)
                 if let index = messages.firstIndex(where: { $0.id == responseID }) { messages[index] = response }
                 else { messages.append(response) }
+                completedResponses += 1
             } catch {
                 guard !Task.isCancelled else { return }
                 if let previous, let index = messages.firstIndex(where: { $0.id == responseID }) { messages[index] = previous }
@@ -184,6 +196,7 @@ final class ChatSession {
             }
             isGenerating = false
             respondingMessageID = nil
+            retryOriginal = nil
             generationTask = nil
             persist()
         }
@@ -235,6 +248,8 @@ final class ChatSession {
         isGenerating = false
         respondingMessageID = nil
         isEnhancing = false
+        if let original = retryOriginal, let index = messages.firstIndex(where: { $0.id == original.id }) { messages[index] = original }
+        retryOriginal = nil
         messages.removeAll { $0.role == .assistant && $0.text.isEmpty && $0.attachments.isEmpty }
         persist()
     }

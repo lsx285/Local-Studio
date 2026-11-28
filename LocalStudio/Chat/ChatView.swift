@@ -38,7 +38,15 @@ struct ChatView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 32) {
                         ForEach(session.messages.filter { !$0.text.isEmpty || !$0.attachments.isEmpty }) { message in
-                            MessageView(message: message, isResponding: session.respondingMessageID == message.id, availableWidth: max(1, width - 32), openArtwork: openArtwork, reportArtworkFrame: { imageFrames.values[$0] = $1 }, canRetry: !session.isGenerating && !session.isEnhancing && session.connection.isConnected, retryResponse: session.retry) { message in
+                            MessageView(message: message, isResponding: session.respondingMessageID == message.id, availableWidth: max(1, width - 32), openArtwork: openArtwork, reportArtworkFrame: { imageFrames.values[$0] = $1 }, editArtwork: { photo in
+                                guard session.attachments.count < 8, let attachment = PhotoAttachment(data: photo.data) else {
+                                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                                    return
+                                }
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.86)) { session.attachments.append(attachment) }
+                                composerFocused = true
+                            }, canRetry: !session.isGenerating && !session.isEnhancing && session.connection.isConnected, retryResponse: session.retry) { message in
                                 session.edit(message)
                                 composerFocused = true
                             }
@@ -104,7 +112,10 @@ struct ChatView: View {
                         HStack {
                             Spacer()
                             if session.messages.isEmpty {
-                                Button { session.toggleTemporary() } label: {
+                                Button {
+                                    UISelectionFeedbackGenerator().selectionChanged()
+                                    session.toggleTemporary()
+                                } label: {
                                     StudioIcon(session.isTemporary ? .temporaryChecked : .temporary)
                                 }
                                 .foregroundStyle(.white)
@@ -114,7 +125,10 @@ struct ChatView: View {
 
                             } else {
                                 HStack(spacing: 8) {
-                                    Button { session.newChat() } label: {
+                                    Button {
+                                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                        session.newChat()
+                                    } label: {
                                         StudioIcon(.newChat)
                                     }
                                     .accessibilityLabel("New chat")
@@ -171,6 +185,7 @@ struct ChatView: View {
                         ZStack {
                             if showsScrollButton {
                                 Button {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                     followsBottom = true
                                     isUserScrolling = false
                                     withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { scrollPosition.scrollTo(edge: .bottom) }
@@ -197,6 +212,7 @@ struct ChatView: View {
                 if let viewer {
                     ArtworkViewer(request: viewer, sourceFrames: imageFrames.values, edit: { photo in
                         if session.attachments.count < 8, let attachment = PhotoAttachment(data: photo.data) { session.attachments.append(attachment) }
+                        else { UINotificationFeedbackGenerator().notificationOccurred(.warning) }
                         composerFocused = true
                     }, remove: { id in
                         if viewer.limited { session.attachments.removeAll { $0.id == id } }
@@ -229,6 +245,13 @@ struct ChatView: View {
             .alert("Couldn’t complete request", isPresented: Binding(get: { session.generationError != nil }, set: { if !$0 { session.generationError = nil } })) {
                 Button("OK") { session.generationError = nil }
             } message: { Text(session.generationError ?? "") }
+            // A finished image lands with a success tap; a finished text reply settles with a soft one.
+            .sensoryFeedback(trigger: session.completedResponses) { _, _ in
+                session.isImageGeneration ? .success : .impact(flexibility: .soft, intensity: 0.6)
+            }
+            .sensoryFeedback(.error, trigger: session.generationError) { _, new in new != nil }
+            .sensoryFeedback(.error, trigger: session.storageError) { _, new in new != nil }
+            .sensoryFeedback(.warning, trigger: session.connection.isConnected) { old, new in old && !new }
             .onChange(of: session.connection.isConnected) {
                 if !session.connection.isConnected { composerFocused = false }
             }

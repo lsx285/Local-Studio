@@ -53,6 +53,12 @@ struct StudioSettingsView: View {
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }
+            // Breathing room beneath the sheet's grabber now that the form has no title.
+            .contentMargins(.top, 24, for: .scrollContent)
+            // Detent-like ticks while scrubbing resolution, and a click for each menu choice.
+            .sensoryFeedback(.selection, trigger: session.canvasMegapixels)
+            .sensoryFeedback(.selection, trigger: session.canvasAspectRatio)
+            .sensoryFeedback(.selection, trigger: session.maxTokens)
         }
         .tint(.white)
         .onDisappear { session.saveSettings() }

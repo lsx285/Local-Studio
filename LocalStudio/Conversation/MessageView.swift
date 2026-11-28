@@ -7,6 +7,7 @@ struct MessageView: View, Equatable {
     let availableWidth: CGFloat
     let openArtwork: (UUID) -> Void
     let reportArtworkFrame: (UUID, CGRect) -> Void
+    let editArtwork: (PhotoAttachment) -> Void
     let canRetry: Bool
     let retryResponse: (ChatMessage) -> Void
     let editPrompt: (ChatMessage) -> Void
@@ -45,7 +46,13 @@ struct MessageView: View, Equatable {
                             }
                             .accessibilityLabel("Generated artwork")
                             .contextMenu {
-                                Button { UIPasteboard.general.image = photo.image } label: {
+                                Button { editArtwork(photo) } label: {
+                                    Label { Text("Edit") } icon: { StudioIcon(.edit) }
+                                }
+                                Button {
+                                    UIPasteboard.general.image = photo.image
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                } label: {
                                     Label { Text("Copy") } icon: { StudioIcon(.copy) }
                                 }
                                 Button {
@@ -53,6 +60,7 @@ struct MessageView: View, Equatable {
                                     Task {
                                         let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
                                         guard status == .authorized || status == .limited else {
+                                            UINotificationFeedbackGenerator().notificationOccurred(.error)
                                             photoError = "Allow Local Studio to add photos in Settings to save artwork."
                                             return
                                         }
@@ -60,7 +68,11 @@ struct MessageView: View, Equatable {
                                             try await PHPhotoLibrary.shared().performChanges {
                                                 PHAssetCreationRequest.forAsset().addResource(with: .photo, data: data, options: nil)
                                             }
-                                        } catch { photoError = "This artwork couldn’t be saved. Please try again." }
+                                            UINotificationFeedbackGenerator().notificationOccurred(.success)
+                                        } catch {
+                                            UINotificationFeedbackGenerator().notificationOccurred(.error)
+                                            photoError = "This artwork couldn’t be saved. Please try again."
+                                        }
                                     }
                                 } label: { Label { Text("Save to photos") } icon: { StudioIcon(.save) } }
                                 ShareLink(item: Image(uiImage: photo.image), preview: SharePreview("Local Studio artwork", image: Image(uiImage: photo.image))) {
@@ -93,10 +105,16 @@ struct MessageView: View, Equatable {
                             .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 24))
                             .contextMenu {
                                 Section {
-                                    Button { UIPasteboard.general.string = message.text } label: {
+                                    Button {
+                                        UIPasteboard.general.string = message.text
+                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    } label: {
                                         Label { Text("Copy") } icon: { StudioIcon(.copy) }
                                     }
-                                    Button { editPrompt(message) } label: {
+                                    Button {
+                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                        editPrompt(message)
+                                    } label: {
                                         Label { Text("Edit") } icon: { StudioIcon(.edit) }
                                     }
                                     Button { selectingText = true } label: {
@@ -126,7 +144,10 @@ struct MessageView: View, Equatable {
             if message.role == .assistant && !isResponding && (!message.text.isEmpty || !message.attachments.isEmpty) {
                 HStack(spacing: 12) {
                     if !message.text.isEmpty {
-                        Button { UIPasteboard.general.string = message.text } label: { StudioIcon(.copyAction) }
+                        Button {
+                            UIPasteboard.general.string = message.text
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        } label: { StudioIcon(.copyAction) }
                             .accessibilityLabel("Copy response")
                         ShareLink(item: message.text) { StudioIcon(.shareAction) }
                             .accessibilityLabel("Share response")
@@ -138,7 +159,10 @@ struct MessageView: View, Equatable {
                     }
                     Menu {
                         Section {
-                            Button { retryResponse(message) } label: {
+                            Button {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                retryResponse(message)
+                            } label: {
                                 Label { Text("Retry") } icon: { StudioIcon(.retry) }
                             }
                             .disabled(!canRetry)
@@ -201,7 +225,10 @@ private struct SentPhotoAttachments: View {
             .clipShape(.rect(cornerRadius: 24))
             .accessibilityLabel("Attached photo")
             .contextMenu {
-                Button { UIPasteboard.general.image = photo.image } label: { Label { Text("Copy") } icon: { StudioIcon(.copy) } }
+                Button {
+                    UIPasteboard.general.image = photo.image
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: { Label { Text("Copy") } icon: { StudioIcon(.copy) } }
             }
             .tint(.white)
     }
