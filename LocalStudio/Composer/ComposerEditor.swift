@@ -97,6 +97,7 @@ struct ComposerEditor: UIViewRepresentable {
 
         func textViewDidChange(_ textView: UITextView) {
             let value = textView.text ?? ""
+            PasteDiagnostics.shared.record("Native editor change: textLength=\(value.utf16.count), attributedLength=\(textView.attributedText?.length ?? 0); forwarding String to composer")
             if parent.text != value { parent.text = value }
         }
         func textViewDidBeginEditing(_ textView: UITextView) { if !parent.focused { parent.focused = true } }
@@ -135,6 +136,26 @@ struct ComposerEditor: UIViewRepresentable {
 }
 
 final class ComposerNativeTextView: UITextView {
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        let allowed = super.canPerformAction(action, withSender: sender)
+        if action == #selector(paste(_:)) {
+            PasteDiagnostics.shared.record("Paste menu eligibility=\(allowed), hasImages=\(UIPasteboard.general.hasImages), hasStrings=\(UIPasteboard.general.hasStrings), responder=\(isFirstResponder)")
+        }
+        return allowed
+    }
+
+    override func paste(_ sender: Any?) {
+        let board = UIPasteboard.general
+        PasteDiagnostics.shared.record("Paste invoked: items=\(board.numberOfItems), types=\(board.types.joined(separator: ",")), accepts=\(pasteConfiguration?.acceptableTypeIdentifiers.joined(separator: ",") ?? "nil"), textLength=\((text ?? "").utf16.count)")
+        super.paste(sender)
+        var attachments = 0
+        let contents = attributedText ?? NSAttributedString(string: "")
+        contents.enumerateAttribute(.attachment, in: NSRange(location: 0, length: contents.length)) { value, _, _ in
+            if value != nil { attachments += 1 }
+        }
+        PasteDiagnostics.shared.record("Native paste returned: textLength=\((text ?? "").utf16.count), nativeAttachments=\(attachments); composer image-attachment ingestion is not installed")
+    }
+
     private let placeholder = UILabel()
     private var exclusionWidth: CGFloat?
     private var reservesExpansionControl = false

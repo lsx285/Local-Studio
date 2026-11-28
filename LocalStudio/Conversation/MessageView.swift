@@ -4,6 +4,8 @@ import Photos
 
 struct MessageView: View {
     let message: ChatMessage
+    let openArtwork: (UUID) -> Void
+    let reportArtworkFrame: (UUID, CGRect) -> Void
     let canRetry: Bool
     let retryResponse: (ChatMessage) -> Void
     let editPrompt: (ChatMessage) -> Void
@@ -22,6 +24,8 @@ struct MessageView: View {
                         Image(uiImage: photo.image)
                             .resizable().scaledToFit()
                             .clipShape(.rect(cornerRadius: 16))
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { reportArtworkFrame(photo.id, $0) }
+                            .onTapGesture { openArtwork(photo.id) }
                             .overlay(alignment: .bottomTrailing) {
                                 ShareLink(item: Image(uiImage: photo.image), preview: SharePreview("Local Studio artwork", image: Image(uiImage: photo.image))) {
                                     StudioIcon(.share)

@@ -11,11 +11,23 @@ struct ChatView: View {
     @State private var composerFullScreen = false
     @State private var composerTransitioning = false
     @State private var settingsPresented = false
+    @State private var viewer: ViewerRequest?
+    @State private var imageFrames: [UUID: CGRect] = [:]
+    @State private var diagnosticsPresented = false
     @State private var endVisible = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var showsScrollButton: Bool {
         !composerFullScreen && !composerTransitioning && !endVisible && !followsBottom && bottomDistance > 24 && !session.messages.isEmpty
+    }
+
+    private func openArtwork(_ id: UUID) {
+        let photos = session.messages.filter { $0.role == .assistant }.flatMap { message in
+            message.attachments.map { ViewerPhoto(photo: $0, date: message.createdAt) }
+        }
+        guard photos.contains(where: { $0.id == id }) else { return }
+        composerFocused = false
+        viewer = ViewerRequest(photos: photos, selectedID: id, limited: false)
     }
 
     var body: some View {
@@ -27,7 +39,7 @@ struct ChatView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 32) {
                         ForEach(session.messages) { message in
-                            MessageView(message: message, canRetry: !session.isGenerating, retryResponse: session.retry) { message in
+                            MessageView(message: message, openArtwork: openArtwork, reportArtworkFrame: { imageFrames[$0] = $1 }, canRetry: !session.isGenerating, retryResponse: session.retry) { message in
                                 session.edit(message)
                                 composerFocused = true
                             }
@@ -79,6 +91,9 @@ struct ChatView: View {
                 .safeAreaInset(edge: .top, spacing: 0) {
                     VStack(spacing: 20) {
                         HStack {
+                            Button { diagnosticsPresented = true } label: { StudioIcon(.bug).frame(width: 44, height: 44) }
+                                .glassEffect(.regular.interactive(), in: .circle)
+                                .accessibilityLabel("Paste diagnostics")
                             Spacer()
                             if session.messages.isEmpty {
                                 Button { session.toggleTemporary() } label: {
@@ -128,7 +143,11 @@ struct ChatView: View {
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     ComposerView(session: session, availableWidth: width, availableHeight: viewportHeight,
                                  focused: $composerFocused, fullScreen: $composerFullScreen,
-                                 changingFullscreen: $composerTransitioning) {
+                                 changingFullscreen: $composerTransitioning,
+                                 openAttachment: { id in
+                                     composerFocused = false
+                                     viewer = ViewerRequest(photos: session.attachments.map { ViewerPhoto(photo: $0, date: .now) }, selectedID: id, limited: true)
+                                 }, reportAttachmentFrame: { imageFrames[$0] = $1 }) {
                         followsBottom = true
                         isUserScrolling = false
                         composerFocused = false
@@ -163,6 +182,19 @@ struct ChatView: View {
                     if followsBottom && !composerFullScreen && !composerTransitioning { withAnimation(reduceMotion ? nil : .smooth) { scrollPosition.scrollTo(edge: .bottom) } }
                 }
             }
+            .overlay {
+                if let viewer {
+                    ArtworkViewer(request: viewer, sourceFrames: imageFrames, edit: { photo in
+                        if session.attachments.count < 8, let attachment = PhotoAttachment(data: photo.data) { session.attachments.append(attachment) }
+                        composerFocused = true
+                    }, remove: { id in
+                        if viewer.limited { session.attachments.removeAll { $0.id == id } }
+                        else { session.removeArtwork(id) }
+                    }, dismiss: { self.viewer = nil })
+                    .zIndex(10)
+                }
+            }
+            .sheet(isPresented: $diagnosticsPresented) { PasteDiagnosticsView() }
             .task { await session.restore() }
             .sheet(isPresented: $settingsPresented) {
                 Color(uiColor: .systemBackground)

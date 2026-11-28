@@ -109,6 +109,14 @@ final class ChatSession {
         }
     }
 
+    func removeArtwork(_ id: UUID) {
+        for index in messages.indices where messages[index].role == .assistant {
+            messages[index].attachments.removeAll { $0.id == id }
+        }
+        messages.removeAll { $0.role == .assistant && $0.text.isEmpty && $0.attachments.isEmpty }
+        persist()
+    }
+
     func cancelGeneration() {
         generationTask?.cancel()
         generationTask = nil

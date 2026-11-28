@@ -9,6 +9,8 @@ struct ComposerView: View {
     @Binding var focused: Bool
     @Binding var fullScreen: Bool
     @Binding var changingFullscreen: Bool
+    let openAttachment: (UUID) -> Void
+    let reportAttachmentFrame: (UUID, CGRect) -> Void
     let send: () -> Void
     @State private var pickerPresented = false
     @State private var fullPickerPresented = false
@@ -88,6 +90,8 @@ struct ComposerView: View {
                                 .resizable().scaledToFill()
                                 .frame(width: 120, height: 120)
                                 .clipShape(.rect(cornerRadius: 20))
+                                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { reportAttachmentFrame(attachment.id, $0) }
+                                .onTapGesture { openAttachment(attachment.id) }
                                 .overlay(alignment: .topTrailing) {
                                     Button {
                                         withAnimation(railAnimation) { session.attachments.removeAll { $0.id == attachment.id } }
