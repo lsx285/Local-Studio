@@ -62,7 +62,7 @@ struct ChatView: View {
                             if message.id == session.respondingMessageID {
                                 GenerationView(startedAt: session.generationStarted, stage: session.generationStage,
                                                progress: session.generationProgress, image: session.isImageGeneration,
-                                               aspectRatio: session.generationAspectRatio)
+                                               aspectRatio: session.generationAspectRatio, availableWidth: max(1, width - 32))
                             }
                         }
                         Color.clear.frame(height: 1).id("bottom")

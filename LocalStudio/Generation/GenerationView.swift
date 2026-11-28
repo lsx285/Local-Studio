@@ -7,6 +7,8 @@ struct GenerationView: View {
     let image: Bool
     /// Width ÷ height of the requested artwork; the dot field takes the same shape.
     let aspectRatio: Double
+    /// Width of the conversation column; the artwork fits a square this wide, like the finished image.
+    let availableWidth: CGFloat
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var imageStage: String {
@@ -35,9 +37,9 @@ struct GenerationView: View {
                             .lineLimit(1)
                             .foregroundStyle(GenerationMotion.labelGradient(at: motionElapsed, text: imageStage, reduceMotion: reduceMotion))
                             .frame(height: 21, alignment: .leading)
-                        // Fit the requested shape inside the original 300 × 400 bounds.
+                        // Same footprint the finished artwork takes: its longer side spans the column width.
                         let ratio = aspectRatio.isFinite && aspectRatio > 0 ? aspectRatio : 0.75
-                        let canvasWidth = min(300, 400 * ratio)
+                        let canvasWidth = availableWidth * min(1, ratio)
                         let canvasHeight = canvasWidth / ratio
                         Canvas { context, size in
                             let samples = GenerationMotion.samples
