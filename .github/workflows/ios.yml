@@ -27,15 +27,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build unsigned IPA
         run: |
-          set -uo pipefail
-          # The full log stays on disk; only compiler errors surface, as annotations.
-          if ! xcodebuild -quiet -project LocalStudio.xcodeproj -scheme LocalStudio \
-            -configuration Release -sdk iphoneos27.2 -destination 'generic/platform=iOS' \
-            -derivedDataPath build/device CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-            COMPILER_INDEX_STORE_ENABLE=NO build > "$RUNNER_TEMP/build.log" 2>&1; then
-            grep -E "error:" "$RUNNER_TEMP/build.log" | sort -u | sed -E 's|^([^:]+):([0-9]+):([0-9]+): error: (.*)$|::error file=\1,line=\2,col=\3::\4|; t; s|^.*error: (.*)$|::error::\1|'
-            exit 1
-          fi
+          set -euo pipefail
+          # Only compiler errors are printed; everything else xcodebuild writes is dropped.
+          xcodebuild -quiet -project LocalStudio.xcodeproj -scheme LocalStudio             -configuration Release -sdk iphoneos27.2 -destination 'generic/platform=iOS'             -derivedDataPath build/device CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO             COMPILER_INDEX_STORE_ENABLE=NO build 2>&1             | { grep -E "error:" | sed -E 's|^([^:]+):([0-9]+):([0-9]+): error: (.*)$|::error file=,line=,col=::|; t; s|^.*error: (.*)$|::error::|' || true; }
           mkdir -p build/Payload
           ditto build/device/Build/Products/Release-iphoneos/LocalStudio.app build/Payload/LocalStudio.app
           ditto -c -k --keepParent build/Payload build/LocalStudio.ipa
