@@ -35,7 +35,7 @@ class LocalStudioTextStream(io.ComfyNode):
                 PromptServer.instance.send_sync("local_studio_text", {"request_id": request_id, "text": text}, client_id)
 
         image_list = [image for image in (images or {}).values()]
-        tokens = clip.tokenize(prompt, images=image_list, skip_template=True, min_length=1)
+        tokens = clip.tokenize(prompt, images=image_list, skip_template=True, llama_template="{}", min_length=1)
         context = generation_token_callback.set(emit)
         try:
             result = clip.generate(tokens, max_length=max_tokens, temperature=0.7, top_k=20,

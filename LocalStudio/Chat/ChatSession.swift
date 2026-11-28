@@ -121,8 +121,8 @@ final class ChatSession {
               let index = messages.firstIndex(where: { $0.id == message.id }),
               let prompt = messages[..<index].last(where: { $0.role == .user }) else { return }
         let modelID: String?
-        if let recorded = message.metadata?.modelId { modelID = recorded }
-        else if message.metadata?.model == "Qwen3-VL 4B" { modelID = "qwen-chat" }
+        if message.metadata?.model == "Qwen3-VL 4B" { modelID = "qwen-vision" }
+        else if let recorded = message.metadata?.modelId { modelID = recorded }
         else { modelID = connection.models.first { $0.name == message.metadata?.model }?.id }
         guard let modelID else { generationError = "The original model for this response is unavailable."; return }
         generate(prompt: prompt.text, photos: prompt.attachments, modelID: modelID, replacing: message.id)

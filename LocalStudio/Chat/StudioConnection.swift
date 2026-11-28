@@ -17,7 +17,8 @@ struct StudioModel: Decodable, Identifiable, Sendable {
     let shift: Double?
 
     var capability: String {
-        if family == "chat" { return "Chat and prompt enhancement" }
+        if id == "qwen-chat" { return "Text chat and prompt enhancement" }
+        if family == "chat" { return "Image chat and visual prompts" }
         return generation && editing ? "Generate and edit" : editing ? "Edit images" : "Generate images"
     }
 }
@@ -237,7 +238,6 @@ final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegat
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
                 var metadata = try decoder.decode(GenerationMetadata.self, from: JSONSerialization.data(withJSONObject: workflow["metadata"]!))
-                metadata.modelId = enhance ? "qwen-chat" : model
                 try Task.checkCancellation()
                 _ = try await request("prompt", body: ["prompt": workflow["prompt"]!, "client_id": clientID, "prompt_id": requestID])
                 event(.stage("Queued on your PC…"))
