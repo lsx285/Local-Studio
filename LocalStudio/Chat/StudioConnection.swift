@@ -260,18 +260,31 @@ final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegat
 
     private func result(_ id: String, metadata: GenerationMetadata) async throws -> StudioResult {
         let data = try await request("history/\(id)")
-        let history = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        guard let entry = history[id] as? [String: Any], let outputs = entry["outputs"] as? [String: Any],
-              let output = outputs["output"] as? [String: Any] else { throw StudioError(message: "ComfyUI returned no result.") }
+        struct ImageReference: Decodable {
+            let filename: String
+            let subfolder: String
+            let type: String
+        }
+        struct Output: Decodable {
+            let text: [String]?
+            let images: [ImageReference]?
+        }
+        struct Entry: Decodable { let outputs: [String: Output] }
+        let history = try JSONDecoder().decode([String: Entry].self, from: data)
+        guard let output = history[id]?.outputs["output"] else { throw StudioError(message: "ComfyUI returned no result.") }
         var images: [Data] = []
-        for image in output["images"] as? [[String: String]] ?? [] {
+        for image in output.images ?? [] {
             guard let baseURL else { throw StudioError(message: "Your PC disconnected before the image downloaded.") }
             var url = URLComponents(url: baseURL.appending(path: "view"), resolvingAgainstBaseURL: false)!
-            url.queryItems = ["filename", "subfolder", "type"].map { URLQueryItem(name: $0, value: image[$0]) }
+            url.queryItems = [URLQueryItem(name: "filename", value: image.filename),
+                              URLQueryItem(name: "subfolder", value: image.subfolder),
+                              URLQueryItem(name: "type", value: image.type)]
             let (data, response) = try await URLSession.shared.data(from: url.url!)
             guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw StudioError(message: "Couldn’t download the generated image.") }
             images.append(data)
         }
-        return StudioResult(text: (output["text"] as? [String])?.joined() ?? "", images: images, metadata: metadata)
+        let text = output.text?.joined() ?? ""
+        guard !text.isEmpty || !images.isEmpty else { throw StudioError(message: "The model returned an empty result.") }
+        return StudioResult(text: text, images: images, metadata: metadata)
     }
 }

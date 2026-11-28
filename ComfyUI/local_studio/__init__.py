@@ -5,7 +5,6 @@ from pillow_heif import register_heif_opener
 from zeroconf import IPVersion, ServiceInfo
 from zeroconf.asyncio import AsyncZeroconf
 
-import comfy.model_management
 from comfy.cli_args import args
 from comfy.text_encoders.llama import generation_token_callback
 from comfy_api.latest import ComfyExtension, io
@@ -22,7 +21,7 @@ class LocalStudioTextStream(io.ComfyNode):
             node_id="LocalStudioTextStream", category="text", is_output_node=True,
             inputs=[io.Clip.Input("clip"), io.String.Input("prompt", multiline=True),
                     io.String.Input("client_id"), io.String.Input("request_id"),
-                    io.Int.Input("max_tokens", default=1024, min=1, max=8192),
+                    io.Int.Input("max_tokens", default=1024, min=1, max=32768),
                     io.Int.Input("seed", default=0, min=0, max=0xffffffffffffffff),
                     io.Autogrow.Input("images", optional=True, template=io.Autogrow.TemplateNames(
                         io.Image.Input("image"), names=[f"image_{i}" for i in range(1, 9)], min=0))],

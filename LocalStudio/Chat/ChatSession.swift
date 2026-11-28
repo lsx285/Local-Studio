@@ -119,7 +119,7 @@ final class ChatSession {
         let responseID = messageID ?? UUID()
         let previous = messageID.flatMap { id in messages.first { $0.id == id } }
         let historyEnd = messageID.flatMap { id in messages.firstIndex { $0.id == id } } ?? messages.endIndex
-        let history = messages[..<historyEnd].filter { !$0.text.isEmpty }.map { ["role": $0.role.rawValue, "text": $0.text] }
+        let history = messages[..<historyEnd].filter { $0.role == .user || !$0.text.isEmpty }.map { ["role": $0.role.rawValue, "text": $0.text] }
         isImageGeneration = selectedModel?.family != "chat"
         generationStarted = .now
         generationStage = "Queued on your PC..."

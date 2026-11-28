@@ -118,12 +118,17 @@ struct ComposerView: View {
                 }
                 .accessibilityLabel("Model")
                 Spacer(minLength: 4)
-                Button { session.enhancePrompt() } label: {
-                    if session.isEnhancing { ProgressView().controlSize(.small) }
+                Button {
+                    if session.isEnhancing { session.cancelGeneration() }
+                    else { session.enhancePrompt() }
+                } label: {
+                    if session.isEnhancing {
+                        HStack(spacing: 5) { ProgressView().controlSize(.small); Text("Stop").font(.caption) }
+                    }
                     else { Label("Enhance", systemImage: "wand.and.stars").font(.system(size: 13, weight: .medium)) }
                 }
-                .disabled(!session.canEnhance)
-                .accessibilityLabel("Enhance prompt with Qwen")
+                .disabled(!session.canEnhance && !session.isEnhancing)
+                .accessibilityLabel(session.isEnhancing ? "Stop prompt enhancement" : "Enhance prompt with Qwen")
             }
             .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 6)
             if !session.attachments.isEmpty && !fullScreen {

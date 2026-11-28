@@ -5,7 +5,7 @@ import folder_paths
 
 MODELS = [
     dict(id="qwen-chat", name="Qwen Chat", family="chat", generation=False, editing=False,
-         encoder="qwen3vl_4b_bf16.safetensors", clip_type="flux3", steps=0, cfg=0, sampler="", scheduler=""),
+         encoder="qwen3vl_4b_bf16.safetensors", clip_type="stable_diffusion", steps=0, cfg=0, sampler="", scheduler=""),
     dict(id="flux3-klein", name="FLUX 3 Klein", family="flux3", generation=True, editing=True,
          weights="flux3-image-klein-nvfp4-bdb.safetensors", encoder="qwen3vl_4b_bf16.safetensors",
          vae="flux2-vae.safetensors", clip_type="flux3", steps=16, cfg=1, sampler="euler", scheduler="simple"),
@@ -54,18 +54,18 @@ def build_workflow(body):
 
     refs = {}
     for i, filename in enumerate(images):
-        # Resolve uploaded names through ComfyUI's input-directory containment checks.
-        if not folder_paths.exists_annotated_filepath(filename) or filename.endswith(("[output]", "[temp]")):
+        image_path = folder_paths.get_annotated_filepath(filename)
+        if not folder_paths.is_within_directory(folder_paths.get_input_directory(), image_path) or not folder_paths.exists_annotated_filepath(filename):
             raise ValueError("Reference image is not an uploaded input.")
-        refs[f"image_{i + 1}"] = node(f"image{i}", "LoadImage", image=filename)
+        refs[f"images.image_{i + 1}"] = node(f"image{i}", "LoadImage", image=filename)
 
     if text_mode:
         encoder = MODELS[0]
         clip = node("clip", "CLIPLoader", clip_name=encoder["encoder"], type=encoder["clip_type"], device="default")
-        system = "You are a helpful assistant. Answer the user's request directly."
+        system = "You are a helpful assistant. Answer directly in the user's language."
         if enhance:
             system = ("Rewrite the request as one detailed image prompt. Preserve every requested subject and exact visible text. "
-                      "Describe composition, lighting, materials and style. Output only the rewritten prompt.")
+                      "Describe composition, lighting, materials and style. Output only the rewritten prompt as plain text, without labels, headings or Markdown.")
             if model["id"] == "fibo-edit":
                 system = "Rewrite the image edit request as one short imperative sentence. Output only the instruction."
             elif model["id"] == "fibo-dev":
@@ -93,8 +93,6 @@ def build_workflow(body):
     clip = node("clip", "CLIPLoader", clip_name=model["encoder"], type=model["clip_type"], device="default")
     vae = node("vae", "VAELoader", vae_name=model["vae"])
     width, height = int(body.get("width", 1024)), int(body.get("height", 1024))
-    if width not in (512, 768, 1024, 1280, 1536) or height not in (512, 768, 1024, 1280, 1536):
-        raise ValueError("Unsupported canvas size.")
     negative_prompt = ""
     if model["family"] == "fibo":
         positive = node("encode", "TextEncodeFibo2", clip=clip, vae=vae, prompt=prompt, negative_prompt="",
@@ -113,8 +111,8 @@ def build_workflow(body):
         latent = node("latent", "EmptyFlux2LatentImage", width=width, height=height, batch_size=1)
         if refs:
             node("reference", "ReferenceMultiLatent", positive=positive, negative=negative, vae=vae,
-                 resolution="resize", megapixels=1.0,
-                 **{f"image{i}": value for i, value in enumerate(refs.values())})
+                 resolution="resize", **{"resolution.megapixels": 1.0},
+                 **{f"images.image{i}": value for i, value in enumerate(refs.values())})
             positive, negative, latent = ["reference", 0], ["reference", 1], ["reference", 2]
 
     if model["id"] == "qwen-turbo":
