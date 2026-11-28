@@ -46,6 +46,7 @@ struct StudioSettingsView: View {
                                 Text("\(model.steps) steps · CFG \(model.cfg.formatted()) · \(model.sampler) · \(model.scheduler)")
                                     .font(.caption).foregroundStyle(.secondary)
                             }
+                            if let shift = model.shift { Text("Shift: \(shift.formatted())").font(.caption).foregroundStyle(.secondary) }
                         }
                     }
                     Text("Sampling presets follow the published workflows. Qwen Turbo’s fixed sigma schedule and Fibo Turbo’s four-step preset are preserved.")

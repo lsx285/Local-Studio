@@ -188,6 +188,7 @@ struct ArtworkViewer: View {
                                                     .font(.caption).foregroundStyle(.secondary)
                                             }
                                             Text("Seed: \(String(metadata.seed))").font(.caption).textSelection(.enabled)
+                                            if let shift = metadata.shift { Text("Shift: \(shift.formatted())").font(.caption) }
                                             Text(metadata.prompt).font(.subheadline).textSelection(.enabled)
                                             if let negative = metadata.negativePrompt, !negative.isEmpty {
                                                 Text("Negative: \(negative)").font(.caption).foregroundStyle(.secondary)

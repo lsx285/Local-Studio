@@ -14,6 +14,7 @@ struct StudioModel: Decodable, Identifiable, Sendable {
     let cfg: Double
     let sampler: String
     let scheduler: String
+    let shift: Double?
 
     var capability: String {
         if family == "chat" { return "Chat and prompt enhancement" }
@@ -30,6 +31,7 @@ struct GenerationMetadata: Codable, Sendable {
     let sampler: String?
     let scheduler: String?
     let negativePrompt: String?
+    let shift: Double?
 }
 
 struct StudioResult {

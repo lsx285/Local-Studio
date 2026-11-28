@@ -8,7 +8,7 @@ MODELS = [
          encoder="qwen3vl_4b_bf16.safetensors", clip_type="stable_diffusion", steps=0, cfg=0, sampler="", scheduler=""),
     dict(id="flux3-klein", name="FLUX 3 Klein", family="flux3", generation=True, editing=True,
          weights="flux3-image-klein-nvfp4-bdb.safetensors", encoder="qwen3vl_4b_bf16.safetensors",
-         vae="flux2-vae.safetensors", clip_type="flux3", steps=16, cfg=1, sampler="euler", scheduler="simple"),
+         vae="flux2-vae.safetensors", clip_type="flux3", steps=16, cfg=1, sampler="euler", scheduler="simple", shift=2.77259),
     dict(id="fibo-dev", name="Fibo 2.0 Dev", family="fibo", generation=True, editing=True,
          weights="fibo2_dev_nvfp4.safetensors", encoder="qwen3vl_4b_bf16.safetensors",
          vae="flux2-vae.safetensors", clip_type="fibo2", steps=50, cfg=5, sampler="euler", scheduler="simple"),
@@ -93,6 +93,9 @@ def build_workflow(body):
     clip = node("clip", "CLIPLoader", clip_name=model["encoder"], type=model["clip_type"], device="default")
     vae = node("vae", "VAELoader", vae_name=model["vae"])
     width, height = int(body.get("width", 1024)), int(body.get("height", 1024))
+    if model["family"] == "flux3":
+        unet = node("sampling", "ModelSamplingFlux", model=unet, max_shift=model["shift"],
+                    base_shift=model["shift"], width=width, height=height)
     negative_prompt = ""
     if model["family"] == "fibo":
         positive = node("encode", "TextEncodeFibo2", clip=clip, vae=vae, prompt=prompt, negative_prompt="",
@@ -129,4 +132,6 @@ def build_workflow(body):
     node("output", "SaveImage", images=decoded, filename_prefix="LocalStudio/" + model["id"])
     metadata = {key: model[key] for key in ("steps", "cfg", "sampler", "scheduler")}
     metadata.update(model=model["name"], seed=seed, prompt=prompt, negative_prompt=negative_prompt)
+    if "shift" in model:
+        metadata["shift"] = model["shift"]
     return {"prompt": graph, "metadata": metadata}
