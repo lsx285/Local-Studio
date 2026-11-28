@@ -22,7 +22,8 @@ struct GenerationView: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: reduceMotion ? 1 : 1 / 60)) { timeline in
             let elapsed = max(0, timeline.date.timeIntervalSince(startedAt))
-            let motionElapsed = 1.85 + max(0, elapsed - 1.85).truncatingRemainder(dividingBy: 14.75)
+            // Motion time starts when the artwork replaces the pulsing dot; Reduce Motion holds a still frame.
+            let motionTime = reduceMotion ? 6 : max(0, elapsed - 1.85)
             Group {
                 if !image || progress == nil || elapsed < 1.85 {
                     Circle().fill(StudioPalette.accent)
@@ -35,41 +36,50 @@ struct GenerationView: View {
                         Text(imageStage)
                             .font(.system(size: 17))
                             .lineLimit(1)
-                            .foregroundStyle(GenerationMotion.labelGradient(at: motionElapsed, text: imageStage, reduceMotion: reduceMotion))
+                            .foregroundStyle(GenerationMotion.shimmer(at: motionTime, text: imageStage, reduceMotion: reduceMotion))
                             .frame(height: 21, alignment: .leading)
                         // Same footprint the finished artwork takes: its longer side spans the column width.
                         let ratio = aspectRatio.isFinite && aspectRatio > 0 ? aspectRatio : 0.75
                         let canvasWidth = availableWidth * min(1, ratio)
                         let canvasHeight = canvasWidth / ratio
+                        // Each generation seeds its own blob paths, so the field never plays back the same way twice.
+                        let blobs = GenerationMotion.blobs(seed: startedAt)
                         Canvas { context, size in
-                            let samples = GenerationMotion.samples
-                            let frameCount = GenerationMotion.frameCount
-                            let position = min(Double(frameCount - 1), max(0, ((reduceMotion ? 12 : motionElapsed) - 1.85) * 59))
-                            let first = Int(position)
-                            let second = min(first + 1, frameCount - 1)
-                            let blend = position - Double(first)
-                            let keep = 1 - blend
-                            // Keep the dot pitch and spread the 22 × 30 recorded field across as many dots as fit.
+                            let appear = GenerationMotion.ease(motionTime / 0.9)
+                            let build = GenerationMotion.ease(motionTime / 2.5)
+                            // Soft glows drifting on layered sine paths and pulsing in and out of the grid.
+                            let glows = blobs.map { blob in
+                                let u = 0.5 + 0.3 * sin(motionTime * blob.wx + blob.px) + 0.12 * sin(motionTime * blob.wx2 + blob.px2)
+                                let v = 0.5 + 0.3 * sin(motionTime * blob.wy + blob.py) + 0.12 * sin(motionTime * blob.wy2 + blob.py2)
+                                let pulse = 0.5 + 0.5 * sin(motionTime * blob.wa + blob.pa)
+                                let reach = blob.size * (0.85 + 0.15 * sin(motionTime * blob.wa * 0.5 + blob.px))
+                                return (x: u * Double(size.width), y: v * Double(size.height), strength: pulse * pulse * build,
+                                        falloffX: 1 / (2 * reach * reach), falloffY: 1 / (2 * 1.56 * reach * reach))
+                            }
                             let pitch = 13.318
                             let columns = max(1, Int((size.width / pitch).rounded()))
                             let rows = max(1, Int((size.height / pitch).rounded()))
-                            let originX = (size.width - Double(columns - 1) * pitch) / 2
-                            let originY = (size.height - Double(rows - 1) * pitch) / 2
+                            let originX = (Double(size.width) - Double(columns - 1) * pitch) / 2
+                            let originY = (Double(size.height) - Double(rows - 1) * pitch) / 2
                             for row in 0..<rows {
-                                let sourceRow = min(29, row * 30 / rows)
+                                let y = originY + Double(row) * pitch
                                 for column in 0..<columns {
-                                    let dot = sourceRow * 22 + min(21, column * 22 / columns)
-                                    let offset = 16 + first * 2704 + dot * 4
-                                    let next = 16 + second * 2704 + dot * 4
-                                    let radius = (Double(samples[offset]) * keep + Double(samples[next]) * blend) / 64
-                                    guard radius > 0 else { continue }
-                                    let red = (Double(samples[offset + 1]) * keep + Double(samples[next + 1]) * blend) / 255
-                                    let green = (Double(samples[offset + 2]) * keep + Double(samples[next + 2]) * blend) / 255
-                                    let blue = (Double(samples[offset + 3]) * keep + Double(samples[next + 3]) * blend) / 255
                                     let x = originX + Double(column) * pitch
-                                    let y = originY + Double(row) * pitch
-                                    let rect = CGRect(x: x - radius, y: y - radius,
-                                                      width: radius * 2, height: radius * 2)
+                                    var calm = 1.0
+                                    for glow in glows {
+                                        let dx = x - glow.x, dy = y - glow.y
+                                        calm *= 1 - glow.strength * exp(-dx * dx * glow.falloffX - dy * dy * glow.falloffY)
+                                    }
+                                    let level = 1 - calm
+                                    let flicker = sin(motionTime * 2.3 + Double(column) * 1.7 + Double(row) * 2.9)
+                                    let radius = appear * (0.92 + 0.08 * flicker) + 1.75 * level
+                                    guard radius > 0.05 else { continue }
+                                    // Dim navy at rest, saturating to blue inside a glow.
+                                    let tint = GenerationMotion.ease(level / 0.45)
+                                    let rect = CGRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2)
+                                    let red = (26 + 14 * tint) / 255
+                                    let green = (34 + 42 * tint) / 255
+                                    let blue = (68 + 132 * tint) / 255
                                     context.fill(Path(ellipseIn: rect), with: .color(Color(.sRGB, red: red, green: green, blue: blue)))
                                 }
                             }
@@ -96,23 +106,46 @@ struct GenerationView: View {
 }
 
 private enum GenerationMotion {
-    static func labelGradient(at elapsed: Double, text: String, reduceMotion: Bool) -> LinearGradient {
-        let frame = min(frameCount - 1, max(0, Int((elapsed - 1.85) * 59)))
+    struct Blob {
+        let wx, px, wx2, px2, wy, py, wy2, py2, wa, pa, size: Double
+    }
+
+    /// Smoothstep of a value clamped to 0...1.
+    static func ease(_ value: Double) -> Double {
+        let t = min(1, max(0, value))
+        return t * t * (3 - 2 * t)
+    }
+
+    /// Three glows with paths, pulse rates and sizes drawn from a SplitMix64 stream seeded by the start time.
+    static func blobs(seed: Date) -> [Blob] {
+        var state = UInt64(bitPattern: Int64(seed.timeIntervalSinceReferenceDate * 1000))
+        func random(_ low: Double, _ high: Double) -> Double {
+            state &+= 0x9E37_79B9_7F4A_7C15
+            var z = state
+            z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+            z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+            z ^= z >> 31
+            return low + (high - low) * Double(z >> 11) / 9_007_199_254_740_992
+        }
+        return (0..<3).map { _ in
+            Blob(wx: random(0.28, 0.5), px: random(0, 2 * .pi), wx2: random(0.7, 1.1), px2: random(0, 2 * .pi),
+                 wy: random(0.22, 0.45), py: random(0, 2 * .pi), wy2: random(0.6, 1.0), py2: random(0, 2 * .pi),
+                 wa: random(1.1, 1.7), pa: random(0, 2 * .pi), size: random(55, 78))
+        }
+    }
+
+    /// A soft dark band sweeping the stage label left to right, matched to the reference recording:
+    /// about 365 pt/s, a new pass every 1.49 s, dimming the text to roughly a quarter at its center.
+    static func shimmer(at time: Double, text: String, reduceMotion: Bool) -> LinearGradient {
+        let lit = 0.69
+        guard !reduceMotion else { return LinearGradient(colors: [Color(white: lit)], startPoint: .leading, endPoint: .trailing) }
         let width = max(1, (text as NSString).size(withAttributes: [.font: UIFont.systemFont(ofSize: 17)]).width)
-        let samples = Self.samples
-        let stops = (0..<64).compactMap { index -> Gradient.Stop? in
-            let location = Double(index) / 63 * 300 / width
-            guard location <= 1 else { return nil }
-            let gray = reduceMotion ? 0.52 : Double(samples[16 + frame * 2704 + 2640 + index]) / 255
-            return Gradient.Stop(color: Color(white: gray), location: location)
+        let center = -100 + (time * 365).truncatingRemainder(dividingBy: 544)
+        let stops = (0..<32).map { index in
+            let location = Double(index) / 31
+            let distance = location * width - center
+            return Gradient.Stop(color: Color(white: lit * (1 - 0.74 * exp(-distance * distance / 2738))), location: location)
         }
         return LinearGradient(stops: stops, startPoint: .leading, endPoint: .trailing)
     }
-    static let samples: [UInt8] = {
-        let url = Bundle.main.url(forResource: "GenerationMotion", withExtension: "dots")!
-        let data = try! Data(contentsOf: url)
-        precondition(data.count >= 16 + 2704 && data.prefix(8) == Data("LSDOTS02".utf8) && (data.count - 16).isMultiple(of: 2704))
-        return Array(data)
-    }()
-    static let frameCount = (samples.count - 16) / 2704
 }
