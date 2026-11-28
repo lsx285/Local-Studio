@@ -96,6 +96,36 @@ struct ComposerView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Menu {
+                    ForEach(session.connection.models) { model in
+                        Button {
+                            session.selectedModelID = model.id
+                            session.saveSettings()
+                        } label: {
+                            Label("\(model.name) · \(model.capability)",
+                                  systemImage: session.selectedModelID == model.id ? "checkmark" : "circle")
+                        }
+                        .disabled(!model.installed || session.isGenerating || session.isEnhancing)
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Text(session.selectedModel?.name ?? session.connection.status)
+                            .lineLimit(1)
+                        Image(systemName: "chevron.down").font(.caption2)
+                    }
+                    .font(.system(size: 13, weight: .medium))
+                }
+                .accessibilityLabel("Model")
+                Spacer(minLength: 4)
+                Button { session.enhancePrompt() } label: {
+                    if session.isEnhancing { ProgressView().controlSize(.small) }
+                    else { Label("Enhance", systemImage: "wand.and.stars").font(.system(size: 13, weight: .medium)) }
+                }
+                .disabled(!session.canEnhance)
+                .accessibilityLabel("Enhance prompt with Qwen")
+            }
+            .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 6)
             if !session.attachments.isEmpty && !fullScreen {
                 ScrollView(.horizontal) {
                     HStack(spacing: 7) {
@@ -132,7 +162,7 @@ struct ComposerView: View {
                                fullScreen: fullScreen, transitioning: changingFullscreen,
                                showsExpansionControl: showsExpansionControl && !fullScreen,
                                pasteImageLimit: loadingPhotos ? 0 : max(0, 8 - session.attachments.count), pasteImages: pasteImages)
-                    .frame(height: fullScreen ? max(100, availableHeight - 158) : inlineEditorHeight)
+                    .frame(height: fullScreen ? max(100, availableHeight - 194) : inlineEditorHeight)
                     .onGeometryChange(for: CGRect.self) { geometry in
                         geometry.frame(in: .named("composerGestures"))
                     } action: { editorGestureBounds = $0 }
@@ -199,7 +229,7 @@ struct ComposerView: View {
                 .foregroundStyle(.white.opacity(fullScreen ? 1 : 0.65))
                 .disabled(changingFullscreen)
                 .accessibilityLabel(fullScreen ? "Collapse composer" : "Expand composer")
-                .padding(.top, fullScreen ? 16 : (session.attachments.isEmpty ? 12 : 148))
+                .padding(.top, fullScreen ? 52 : (session.attachments.isEmpty ? 48 : 184))
                 .padding(.trailing, fullScreen ? 16 : 8)
             }
         }

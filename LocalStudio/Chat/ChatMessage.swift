@@ -7,13 +7,15 @@ struct ChatMessage: Identifiable {
     var text: String
     var attachments: [PhotoAttachment]
     let createdAt: Date
+    var metadata: GenerationMetadata?
 
-    init(id: UUID = UUID(), role: Role, text: String, attachments: [PhotoAttachment] = [], createdAt: Date = .now) {
+    init(id: UUID = UUID(), role: Role, text: String, attachments: [PhotoAttachment] = [], createdAt: Date = .now, metadata: GenerationMetadata? = nil) {
         self.id = id
         self.role = role
         self.text = text
         self.attachments = attachments
         self.createdAt = createdAt
+        self.metadata = metadata
     }
 }
 
@@ -41,6 +43,7 @@ struct ArchivedMessage: Codable, Sendable {
     let text: String
     let photos: [Photo]
     let createdAt: Date
+    let metadata: GenerationMetadata?
 }
 
 actor ConversationArchive {
@@ -50,9 +53,9 @@ actor ConversationArchive {
         URL.applicationSupportDirectory.appending(path: "conversation.json")
     }
 
-    func load() -> [ArchivedMessage] {
-        guard let data = try? Data(contentsOf: url) else { return [] }
-        return (try? JSONDecoder().decode([ArchivedMessage].self, from: data)) ?? []
+    func load() throws -> [ArchivedMessage] {
+        guard FileManager.default.fileExists(atPath: url.path) else { return [] }
+        return try JSONDecoder().decode([ArchivedMessage].self, from: Data(contentsOf: url))
     }
 
     func save(_ messages: [ArchivedMessage], revision newRevision: Int) throws {

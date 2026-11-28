@@ -11,6 +11,9 @@
     <key>UILaunchScreen</key><dict><key>UIColorName</key><string>LaunchBackground</string></dict>
     <key>UIUserInterfaceStyle</key><string>Dark</string>
     <key>NSPhotoLibraryAddUsageDescription</key><string>Save artwork you choose to your photo library.</string>
+    <key>NSLocalNetworkUsageDescription</key><string>Find your PC and run chat and image models through ComfyUI on your local network.</string>
+    <key>NSBonjourServices</key><array><string>_localstudio._tcp</string></array>
+    <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
     <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string></array>
     <key>UIApplicationSceneManifest</key><dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
 </dict></plist>

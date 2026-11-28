@@ -1,15 +1,9 @@
 # Local Studio
 
-A native Swift 6 iPhone frontend for future local chat, image generation, and editing models. Model integration is not connected yet.
+Native Swift 6 iPhone client for local ComfyUI chat, image generation and editing. The composer selects installed models and enhances prompts with Qwen3-VL. Responses stream from the PC; generated images retain their prompt, seed and sampling settings in Image info.
 
-The interface includes Liquid Glass controls, custom vector icons, photo attachments, an expanding composer, native text selection, and an animated artwork preview. The composer uses the same native text input across compact and fullscreen layouts. Regular conversations are saved on the iPhone; temporary conversations stay in memory.
+Start `run_nvidia_gpu.bat` in the configured ComfyUI portable installation. The Local Studio extension advertises `_localstudio._tcp` over Bonjour and serves the model catalog and native workflow graphs. The iPhone discovers the PC on the same local network; allow Local Network access when prompted. No address configuration is needed. TCP 8188 and multicast DNS must be reachable on the private network.
 
-Text responses and artwork generation are currently simulated. The bundled artwork and animation geometry are runtime resources used by the preview. No image is actually generated or edited.
+Normal conversations persist on the iPhone; temporary conversations stay in memory. Original attachments are uploaded without client-side resizing. The image workflows use their published sampling presets, including Qwen Turbo's fixed eight-step sigmas and Fibo Edit Turbo's four-step CFG 1 preset. MOSS SFT is offered for generation; its separate editing LoRA is not installed.
 
-## Build and download
-
-Compilation happens in [GitHub Actions](../../actions). Push to main, open a pull request, or dispatch the workflow. It builds an unsigned iOS device app and uploads **LocalStudio.ipa** directly, without a ZIP wrapper. Installation requires signing through your chosen installation tool.
-
-The build uses Xcode 27.2, the iOS 27.2 SDK, and Swift 6, targeting iOS 27.0 or newer. The workflow has no simulator, screenshot, or testing steps. Main-branch runs also delete all older repository workflow runs and their associated artifacts, retaining the current run.
-
-Open LocalStudio.xcodeproj to browse the project. App contains the entry point and icons, Chat manages conversation state and storage, and Composer, Conversation, and Generation contain the interface. Resources holds the assets used by the app. No package manager or project generator is required.
+Compilation happens only in GitHub Actions using Xcode 27.2, iOS 27.2 and Swift 6, targeting iOS 27 or newer. Pushes upload an unsigned `LocalStudio.ipa`. Device signing and installation remain external. The workflow contains no simulator or test steps.

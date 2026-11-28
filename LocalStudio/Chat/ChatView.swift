@@ -23,7 +23,7 @@ struct ChatView: View {
 
     private func openArtwork(_ id: UUID) {
         let photos = session.messages.filter { $0.role == .assistant }.flatMap { message in
-            message.attachments.map { ViewerPhoto(photo: $0, date: message.createdAt) }
+            message.attachments.map { ViewerPhoto(photo: $0, date: message.createdAt, metadata: message.metadata) }
         }
         guard photos.contains(where: { $0.id == id }) else { return }
         composerFocused = false
@@ -39,7 +39,7 @@ struct ChatView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 32) {
                         ForEach(session.messages) { message in
-                            MessageView(message: message, openArtwork: openArtwork, reportArtworkFrame: { imageFrames[$0] = $1 }, canRetry: !session.isGenerating, retryResponse: session.retry) { message in
+                            MessageView(message: message, openArtwork: openArtwork, reportArtworkFrame: { imageFrames[$0] = $1 }, canRetry: !session.isGenerating && !session.isEnhancing && session.connection.isConnected, retryResponse: session.retry) { message in
                                 session.edit(message)
                                 composerFocused = true
                             }
@@ -49,7 +49,8 @@ struct ChatView: View {
                                 removal: .opacity))
                         }
                         if session.isGenerating {
-                            GenerationView(startedAt: session.generationStarted, availableWidth: width - 32)
+                            GenerationView(startedAt: session.generationStarted, stage: session.generationStage,
+                                           progress: session.generationProgress, image: session.isImageGeneration)
 
                         }
                         Color.clear.frame(height: 1).id("bottom")
@@ -195,10 +196,9 @@ struct ChatView: View {
                 }
             }
             .sheet(isPresented: $diagnosticsPresented) { PasteDiagnosticsView() }
-            .task { await session.restore() }
+            .task { session.connection.discover(); await session.restore() }
             .sheet(isPresented: $settingsPresented) {
-                Color(uiColor: .systemBackground)
-                    .ignoresSafeArea()
+                StudioSettingsView(session: session)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
@@ -217,6 +217,12 @@ struct ChatView: View {
             .alert("Storage unavailable", isPresented: Binding(get: { session.storageError != nil }, set: { if !$0 { session.storageError = nil } })) {
                 Button("OK") { session.storageError = nil }
             } message: { Text(session.storageError ?? "") }
+            .alert("Couldn’t complete request", isPresented: Binding(get: { session.generationError != nil }, set: { if !$0 { session.generationError = nil } })) {
+                Button("OK") { session.generationError = nil }
+            } message: { Text(session.generationError ?? "") }
+            .onChange(of: session.messages.last?.text) {
+                if followsBottom { scrollPosition.scrollTo(edge: .bottom) }
+            }
         }
     }
 }

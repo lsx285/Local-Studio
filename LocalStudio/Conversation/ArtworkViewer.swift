@@ -4,6 +4,7 @@ import UIKit
 struct ViewerPhoto: Identifiable {
     let photo: PhotoAttachment
     let date: Date
+    var metadata: GenerationMetadata? = nil
     var id: UUID { photo.id }
 }
 
@@ -173,6 +174,29 @@ struct ArtworkViewer: View {
                     if !request.limited {
                         RoundedRectangle(cornerRadius: 20).fill(Color(white: 0.1))
                             .frame(height: 260)
+                            .overlay {
+                                ScrollView {
+                                    VStack(alignment: .leading, spacing: 10) {
+                                        Text("Image info").font(.headline)
+                                        Text(current.date.formatted(date: .abbreviated, time: .shortened)).foregroundStyle(.secondary)
+                                        Text("\(Int(current.photo.image.size.width * current.photo.image.scale)) × \(Int(current.photo.image.size.height * current.photo.image.scale)) pixels · \(ByteCountFormatter.string(fromByteCount: Int64(current.photo.data.count), countStyle: .file))")
+                                            .font(.caption).foregroundStyle(.secondary)
+                                        if let metadata = current.metadata {
+                                            Text(metadata.model).font(.subheadline.weight(.semibold))
+                                            if let steps = metadata.steps, let cfg = metadata.cfg {
+                                                Text("\(steps) steps · CFG \(cfg.formatted()) · \(metadata.sampler ?? "") · \(metadata.scheduler ?? "")")
+                                                    .font(.caption).foregroundStyle(.secondary)
+                                            }
+                                            Text("Seed: \(String(metadata.seed))").font(.caption).textSelection(.enabled)
+                                            Text(metadata.prompt).font(.subheadline).textSelection(.enabled)
+                                            if let negative = metadata.negativePrompt, !negative.isEmpty {
+                                                Text("Negative: \(negative)").font(.caption).foregroundStyle(.secondary)
+                                            }
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading).padding(18)
+                                }
+                            }
                             .padding(.horizontal, 28)
                             .padding(.bottom, max(12, bottom - 6) + 62)
                             .frame(maxHeight: .infinity, alignment: .bottom)

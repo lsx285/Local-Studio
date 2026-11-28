@@ -144,7 +144,7 @@ struct MessageView: View {
                             }
                             .disabled(!canRetry)
                         } header: {
-                            Text("Used Local Model")
+                            Text(message.metadata?.model ?? "Local Studio")
                                 .font(.system(size: 13, weight: .medium))
                         }
                     } label: { StudioIcon(.moreAction) }

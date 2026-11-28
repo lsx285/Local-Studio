@@ -1,0 +1,77 @@
+diff --git a/comfy/text_encoders/llama.py b/comfy/text_encoders/llama.py
+index f1d275b..d793e39 100644
+--- a/comfy/text_encoders/llama.py
++++ b/comfy/text_encoders/llama.py
+@@ -1,4 +1,5 @@
+ import torch
++from contextvars import ContextVar
+ import torch.nn as nn
+ from dataclasses import dataclass
+ from typing import Optional, Any, Tuple
+@@ -19,6 +20,7 @@ from . import qwen_vl
+ 
+ # widest speculative verify (draft chain or tree rows) the decode caches serve in one step
+ SPEC_ROWS = 8
++generation_token_callback = ContextVar("generation_token_callback", default=None)
+ 
+ 
+ @dataclass
+@@ -1253,6 +1255,7 @@ class BaseGenerate:
+         current_input_ids = initial_input_ids
+         try:
+             for step in tqdm(range(max_length), desc="Generating tokens"):
++                comfy.model_management.throw_exception_if_processing_interrupted()
+                 if step > 0:
+                     if compile_allocations:
+                         comfy.model_prefetch.malloc_graph_begin(device)
+@@ -1292,6 +1295,9 @@ class BaseGenerate:
+ 
+                 token_id = decode_tokens[0].item()
+                 generated_token_ids.append(token_id)
++                callback = generation_token_callback.get()
++                if callback is not None and token_id not in stop_tokens:
++                    callback(generated_token_ids)
+ 
+                 if step == 0 and hasattr(self.model.embed_tokens, "_v"):
+                     # prefill's transients can evict body pages and lower the VBAR watermark: let the decode fault them back
+diff --git a/comfy/text_encoders/qwen_image21.py b/comfy/text_encoders/qwen_image21.py
+index 25fb221..eb0cbc6 100644
+--- a/comfy/text_encoders/qwen_image21.py
++++ b/comfy/text_encoders/qwen_image21.py
+@@ -1,7 +1,10 @@
++import json
+ import numbers
+ 
+ import torch
+ 
++import comfy.ops
++import comfy.model_management
+ import comfy.text_encoders.qwen3vl
+ from comfy import sd1_clip
+ 
+@@ -33,9 +36,25 @@ class QwenImage21Qwen3VLClipModel(comfy.text_encoders.qwen3vl.Qwen3VLClipModel):
+         # last layer without the final RMSNorm: transformers 4.57 hidden_states[-1], which Qwen's results are tuned to (5.x norms it)
+         self.layer_norm_hidden_state = False
+         self.image_spans = []
++        self.nvfp4_conditioning = False
++
++    def load_sd(self, sd):
++        self.nvfp4_conditioning = any(json.loads(v.numpy().tobytes()).get("format") == "nvfp4" for k, v in sd.items() if k.endswith(".comfy_quant"))
++        return super().load_sd(sd)
++
++    def forward(self, tokens):
++        device = self.execution_device
++        if device is None:
++            device = self.transformer.get_input_embeddings().weight.device
++        if not self.nvfp4_conditioning or not comfy.model_management.supports_nvfp4_compute(device):
++            return super().forward(tokens)
++        with comfy.ops.use_quantized_matmul(self.transformer, device):
++            return super().forward(tokens)
+ 
+     def process_tokens(self, tokens, device):
+         embeds, attention_mask, num_tokens, embeds_info = super().process_tokens(tokens, device)
++        if self.nvfp4_conditioning and comfy.model_management.supports_nvfp4_compute(device):
++            embeds = embeds.to(dtype=torch.bfloat16)
+         self.image_spans = [(e["index"], e["size"]) for e in embeds_info if e["type"] == "image"]
+         return embeds, attention_mask, num_tokens, embeds_info
+ 
