@@ -19,6 +19,15 @@
                 "solid": "srgb:0.96000,0.96000,0.97000,1.00000"
               }
             }
+          ],
+          "opacity-specializations": [
+            {
+              "value": 0.9
+            },
+            {
+              "appearance": "tinted",
+              "value": 1
+            }
           ]
         },
         {
@@ -49,7 +58,16 @@
         "value": 0.25
       },
       "lighting": "combined",
-      "specular": true
+      "specular": true,
+      "translucency-specializations": [
+        {
+          "appearance": "dark",
+          "value": {
+            "enabled": true,
+            "value": 0.15
+          }
+        }
+      ]
     },
     {
       "name": "Canvas",
@@ -70,6 +88,15 @@
                 "solid": "srgb:0.55000,0.55000,0.58000,1.00000"
               }
             }
+          ],
+          "opacity-specializations": [
+            {
+              "value": 0.85
+            },
+            {
+              "appearance": "dark",
+              "value": 0.45
+            }
           ]
         }
       ],
@@ -83,7 +110,16 @@
       },
       "lighting": "individual",
       "specular": true,
-      "blur-material": 0.5
+      "blur-material": 0.5,
+      "translucency-specializations": [
+        {
+          "appearance": "dark",
+          "value": {
+            "enabled": true,
+            "value": 0.7
+          }
+        }
+      ]
     }
   ],
   "supported-platforms": {
@@ -127,5 +163,6 @@
         }
       }
     }
-  ]
+  ],
+  "color-space-for-untagged-svg-colors": "srgb"
 }
