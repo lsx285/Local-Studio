@@ -25,7 +25,6 @@ final class ChatSession {
     var messages: [ChatMessage] = []
     var draft = ""
     var attachments: [PhotoAttachment] = []
-    var isTemporary = false
     var isGenerating = false
     private(set) var respondingMessageID: UUID?
     var storageError: String?
@@ -76,7 +75,7 @@ final class ChatSession {
         let saved: [ArchivedMessage]
         do { saved = try await ConversationArchive.shared.load() }
         catch { storageError = "Your saved conversation couldn’t be opened: \(error.localizedDescription)"; return }
-        guard messages.isEmpty, !isTemporary, revision == 0 else { return }
+        guard messages.isEmpty, revision == 0 else { return }
         messages = saved.map(ChatMessage.init)
     }
 
@@ -85,13 +84,7 @@ final class ChatSession {
         messages.removeAll()
         attachments.removeAll()
         draft = ""
-        isTemporary = false
         persist()
-    }
-
-    func toggleTemporary() {
-        guard messages.isEmpty else { return }
-        isTemporary.toggle()
     }
 
     /// Moves a prompt back into the composer and drops it together with everything after it,
@@ -260,7 +253,6 @@ final class ChatSession {
     }
 
     private func persist() {
-        guard !isTemporary else { return }
         revision += 1
         let currentRevision = revision
         let snapshot = messages.map(ArchivedMessage.init)

@@ -117,20 +117,10 @@ struct ChatView: View {
                     VStack(spacing: 20) {
                         HStack {
                             Spacer()
-                            if session.messages.isEmpty {
-                                Button {
-                                    UISelectionFeedbackGenerator().selectionChanged()
-                                    session.toggleTemporary()
-                                } label: {
-                                    StudioIcon(session.isTemporary ? .temporaryChecked : .temporary)
-                                }
-                                .foregroundStyle(.white)
-                                .glassEffect(.regular.interactive(), in: .circle)
-                                .accessibilityLabel("Temporary chat")
-                                .accessibilityValue(session.isTemporary ? "On" : "Off")
-
-                            } else {
-                                HStack(spacing: 8) {
+                            // One glass shape: a circle around the menu on an empty chat, a capsule once the
+                            // conversation starts, with New chat sliding out from behind its leading edge.
+                            HStack(spacing: 8) {
+                                if !session.messages.isEmpty {
                                     Button {
                                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                         session.newChat()
@@ -138,29 +128,35 @@ struct ChatView: View {
                                         StudioIcon(.newChat)
                                     }
                                     .accessibilityLabel("New chat")
-
-                                    Menu {
-                                        Section {
-                                            Button {
-                                                composerFocused = false
-                                                settingsPresented = true
-                                            } label: {
-                                                Label { Text("Settings") } icon: { StudioIcon(.settings) }
-                                            }
-                                        } header: {
-                                            Text("Local Studio \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0")")
-                                                .font(.system(size: 13, weight: .medium))
-                                        }
-                                    } label: {
-                                        StudioIcon(.moreHeader)
-                                    }
-                                    .accessibilityLabel("More options")
-                                    .tint(.white)
+                                    .transition(.move(edge: .leading).combined(with: .opacity))
                                 }
-                                .padding(.horizontal, 4)
-                                .foregroundStyle(.white)
-                                .glassEffect(.regular.interactive(), in: .capsule)
+
+                                Menu {
+                                    Section {
+                                        Button {
+                                            composerFocused = false
+                                            settingsPresented = true
+                                        } label: {
+                                            Label { Text("Settings") } icon: { StudioIcon(.settings) }
+                                        }
+                                    } header: {
+                                        Text("Local Studio \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0")")
+                                            .font(.system(size: 13, weight: .medium))
+                                    }
+                                } label: {
+                                    // Alone in the circle, the artwork's dots (2.9 pt right of its box center) are centered.
+                                    StudioIcon(.moreHeader)
+                                        .offset(x: session.messages.isEmpty ? -2.895833 : 0, y: session.messages.isEmpty ? -0.25 : 0)
+                                }
+                                .accessibilityLabel("More options")
+                                .tint(.white)
                             }
+                            .padding(.horizontal, session.messages.isEmpty ? 0 : 4)
+                            .foregroundStyle(.white)
+                            .clipShape(.capsule)
+                            .glassEffect(.regular.interactive(), in: .capsule)
+                            .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.42, dampingFraction: 0.84),
+                                       value: session.messages.isEmpty)
                         }
                     }
                     .frame(height: composerFullScreen ? 0 : nil)
