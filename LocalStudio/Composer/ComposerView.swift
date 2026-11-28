@@ -119,8 +119,11 @@ struct ComposerView: View {
                 } label: {
                     TimelineView(.animation(minimumInterval: 1 / 30, paused: !session.isEnhancing)) { timeline in
                         HStack(spacing: 5) {
+                            // Palette rendering splits the symbol's layers: the wand holds still while its stars twinkle.
                             Image(systemName: "wand.and.stars")
-                                .rotationEffect(.degrees(session.isEnhancing ? sin(timeline.date.timeIntervalSinceReferenceDate * 7) * 12 : 0))
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.primary, .primary.opacity(session.isEnhancing
+                                    ? 0.6 + 0.4 * sin(timeline.date.timeIntervalSinceReferenceDate * 7) : 1))
                             Text(session.isEnhancing ? "Enhancing..." : "Enhance")
                         }
                         .font(.system(size: 13, weight: .medium))
