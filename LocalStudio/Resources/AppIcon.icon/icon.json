@@ -53,13 +53,15 @@
         "kind": "neutral",
         "opacity": 0.5
       },
-      "translucency": {
-        "enabled": true,
-        "value": 0.25
-      },
       "lighting": "combined",
       "specular": true,
       "translucency-specializations": [
+        {
+          "value": {
+            "enabled": true,
+            "value": 0.25
+          }
+        },
         {
           "appearance": "dark",
           "value": {
@@ -104,14 +106,16 @@
         "kind": "neutral",
         "opacity": 0.3
       },
-      "translucency": {
-        "enabled": true,
-        "value": 0.5
-      },
       "lighting": "individual",
       "specular": true,
       "blur-material": 0.5,
       "translucency-specializations": [
+        {
+          "value": {
+            "enabled": true,
+            "value": 0.5
+          }
+        },
         {
           "appearance": "dark",
           "value": {
