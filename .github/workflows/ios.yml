@@ -18,62 +18,42 @@ jobs:
     name: Swift 6 · iOS 27.2
     runs-on: xcode-27
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Show toolchain
+      - name: Build unsigned IPA
         run: |
-          set -euo pipefail
-          xcodebuild -version
-          xcrun swift --version
-      - name: Build unsigned device app
-        run: |
-          set -euo pipefail
-          xcodebuild -project LocalStudio.xcodeproj -scheme LocalStudio \
+          set -uo pipefail
+          # The full log stays on disk; only compiler errors surface, as annotations.
+          if ! xcodebuild -quiet -project LocalStudio.xcodeproj -scheme LocalStudio \
             -configuration Release -sdk iphoneos27.2 -destination 'generic/platform=iOS' \
             -derivedDataPath build/device CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-            COMPILER_INDEX_STORE_ENABLE=NO build
+            COMPILER_INDEX_STORE_ENABLE=NO build > "$RUNNER_TEMP/build.log" 2>&1; then
+            grep -E "error:" "$RUNNER_TEMP/build.log" | sort -u | sed -E 's|^([^:]+):([0-9]+):([0-9]+): error: (.*)$|::error file=\1,line=\2,col=\3::\4|; t; s|^.*error: (.*)$|::error::\1|'
+            exit 1
+          fi
           mkdir -p build/Payload
           ditto build/device/Build/Products/Release-iphoneos/LocalStudio.app build/Payload/LocalStudio.app
           ditto -c -k --keepParent build/Payload build/LocalStudio.ipa
-      - name: Upload IPA directly
+      - name: Upload IPA
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           path: build/LocalStudio.ipa
           archive: false
           if-no-files-found: error
           retention-days: 14
-  cleanup:
-    name: Delete previous workflow runs
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write
-    steps:
-      - name: Remove older runs and their artifacts
+      - name: Delete previous runs
+        if: success() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" \
-            --jq ".workflow_runs[] | select(.id < $GITHUB_RUN_ID) | .id" > "$RUNNER_TEMP/previous-run-ids"
-          while IFS= read -r run_id; do
-            [ -n "$run_id" ] || continue
-            status=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq .status)
-            if [ "$status" != completed ]; then
-              gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/cancel" || true
-            fi
-            deleted=false
-            for attempt in 1 2 3 4 5; do
-              if gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/runs/$run_id"; then
-                deleted=true
-                break
-              fi
-              sleep 3
-            done
-            if [ "$deleted" != true ]; then
-              echo "Could not delete previous run $run_id" >&2
-              exit 1
-            fi
-          done < "$RUNNER_TEMP/previous-run-ids"
+          for run_id in $(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" \
+              --jq ".workflow_runs[] | select(.id < $GITHUB_RUN_ID) | .id"); do
+            gh api --silent --method DELETE "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" 2>/dev/null \
+              || echo "::error::Could not delete previous run $run_id"
+          done
