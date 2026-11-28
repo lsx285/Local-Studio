@@ -14,7 +14,6 @@ struct StudioModel: Decodable, Identifiable, Sendable {
     let cfg: Double
     let sampler: String
     let scheduler: String
-    let shift: Double?
 
     var capability: String {
         if id == "qwen-chat" { return "Text chat and prompt enhancement" }
@@ -34,7 +33,6 @@ struct GenerationMetadata: Codable, Equatable, Sendable {
     let sampler: String?
     let scheduler: String?
     let negativePrompt: String?
-    let shift: Double?
     let diffusionModel: String?
     let encoder: String?
     let vae: String?

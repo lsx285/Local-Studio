@@ -9,9 +9,6 @@ import folder_paths
 MODELS = [
     dict(id="qwen-chat", name="Qwen Heretic", family="chat", generation=False, editing=False,
          encoder="qwen3-vl-4b-heretic_nvfp4.safetensors", clip_type="stable_diffusion", steps=0, cfg=0, sampler="", scheduler=""),
-    dict(id="flux3-klein", name="FLUX 3 Klein", family="flux3", generation=True, editing=True,
-         weights="flux3-image-klein-nvfp4-bdb.safetensors", encoder="qwen3vl_4b_bf16.safetensors",
-         vae="flux2-vae.safetensors", clip_type="flux3", steps=16, cfg=1, sampler="euler", scheduler="simple", shift=2.77259),
     dict(id="fibo-dev", name="Fibo 2.0 Dev", family="fibo", generation=True, editing=True,
          weights="fibo2_dev_nvfp4.safetensors", encoder="qwen3vl_4b_bf16.safetensors",
          vae="flux2-vae.safetensors", clip_type="fibo2", steps=50, cfg=5, sampler="euler", scheduler="simple"),
@@ -104,9 +101,6 @@ def build_workflow(body):
     clip = node("clip", "CLIPLoader", clip_name=model["encoder"], type=model["clip_type"], device="default")
     vae = node("vae", "VAELoader", vae_name=model["vae"])
     negative_prompt = NEGATIVE.get(family, "")
-    if family == "flux3":
-        unet = node("sampling", "ModelSamplingFlux", model=unet, max_shift=model["shift"], base_shift=model["shift"],
-                    width=width, height=height)
     if family == "fibo":
         # Edits keep the requested pixel area at the reference's (EXIF-oriented) aspect ratio.
         ref_width, ref_height = width, height
@@ -135,7 +129,7 @@ def build_workflow(body):
                  **{f"images.image{i}": value for i, value in enumerate(refs.values())})
             positive, negative, latent = ["reference", 0], ["reference", 1], ["reference", 2]
 
-    metadata = {key: model[key] for key in ("steps", "cfg", "sampler", "scheduler", "shift") if key in model}
+    metadata = {key: model[key] for key in ("steps", "cfg", "sampler", "scheduler")}
     if model["id"] == "qwen-turbo":
         samples = node("sample", "SamplerCustomAdvanced", noise=node("noise", "RandomNoise", noise_seed=seed),
                        guider=node("guider", "CFGGuider", model=unet, positive=positive, negative=negative, cfg=1.0),
