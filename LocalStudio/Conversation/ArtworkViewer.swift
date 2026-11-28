@@ -48,7 +48,7 @@ struct ArtworkViewer: View {
         guard !closing else { return }
         transitionSource = sourceFrames[selected]
         closing = true; ready = false
-        withAnimation(motion, completionCriteria: .removed) { expanded = false } completion: {
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.3), completionCriteria: .logicallyComplete) { expanded = false } completion: {
             dismiss(); after?()
         }
     }
@@ -133,13 +133,9 @@ struct ArtworkViewer: View {
                     .opacity(ready ? 1 : 0)
                     .allowsHitTesting(ready && !closing)
                     .accessibilityHidden(!ready)
-                // Keep a constant backing size: only its composited transform moves.
-                // The native pager stays mounted, avoiding setup/teardown at the handoff.
-                Image(uiImage: current.photo.image).resizable().scaledToFit()
-                    .frame(width: target.width, height: target.height)
-                    .clipShape(.rect(cornerRadius: expanded ? 0 : 16 / max(0.001, frame.width / target.width)))
-                    .scaleEffect(x: frame.width / target.width, y: frame.height / target.height)
-                    .position(x: frame.midX, y: frame.midY)
+                ArtworkTransition(image: current.photo.image, baseSize: target.size,
+                                  sourceSize: source?.size ?? target.size,
+                                  sourceCorner: request.limited ? 20 : 16, frame: frame)
                     .opacity(ready ? 0 : (expanded || source != nil ? 1 : 0))
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
@@ -244,7 +240,7 @@ struct ArtworkViewer: View {
             .simultaneousGesture(infoGesture)
             .foregroundStyle(.white).tint(.white)
             .onAppear {
-                withAnimation(motion, completionCriteria: .removed) { expanded = true } completion: { if !closing { ready = true } }
+                withAnimation(motion, completionCriteria: .logicallyComplete) { expanded = true } completion: { if !closing { ready = true } }
             }
             .onChange(of: selected) { zoomed = false }
             .confirmationDialog("Delete image?", isPresented: $confirmDelete, titleVisibility: .visible) {
@@ -252,6 +248,39 @@ struct ArtworkViewer: View {
             }
         }
         .ignoresSafeArea()
+    }
+}
+
+// One image plane and one crop window. Uniform image scaling preserves its
+// proportions while the window morphs from the rail crop into the viewer.
+private struct ArtworkTransition: View, Animatable {
+    let image: UIImage
+    let baseSize: CGSize
+    let sourceSize: CGSize
+    let sourceCorner: CGFloat
+    var frame: CGRect
+
+    var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, AnimatablePair<CGFloat, CGFloat>> {
+        get { AnimatablePair(AnimatablePair(frame.midX, frame.midY), AnimatablePair(frame.width, frame.height)) }
+        set {
+            frame = CGRect(x: newValue.first.first - newValue.second.first / 2,
+                           y: newValue.first.second - newValue.second.second / 2,
+                           width: newValue.second.first, height: newValue.second.second)
+        }
+    }
+
+    var body: some View {
+        let sx = max(0.001, frame.width / max(1, baseSize.width))
+        let sy = max(0.001, frame.height / max(1, baseSize.height))
+        let cover = max(sx, sy)
+        let sourceScale = min(sourceSize.width / max(1, baseSize.width), sourceSize.height / max(1, baseSize.height))
+        let radius = sourceCorner * min(1, max(0, (1 - min(sx, sy)) / max(0.001, 1 - sourceScale)))
+        Image(uiImage: image).resizable().scaledToFit()
+            .frame(width: baseSize.width, height: baseSize.height)
+            .scaleEffect(x: cover / sx, y: cover / sy)
+            .clipShape(RoundedRectangle(cornerSize: CGSize(width: radius / sx, height: radius / sy)))
+            .scaleEffect(x: sx, y: sy)
+            .position(x: frame.midX, y: frame.midY)
     }
 }
 
