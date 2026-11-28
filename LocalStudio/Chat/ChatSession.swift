@@ -56,7 +56,7 @@ final class ChatSession {
     init() {
         let defaults = UserDefaults.standard
         defaults.register(defaults: ["model": "qwen-chat", "canvasMegapixels": 1.0, "canvasAspectRatio": "1:1", "maxTokens": 1024])
-        selectedModelID = defaults.string(forKey: "model")!
+        selectedModelID = defaults.string(forKey: "model") == "qwen-vision" ? "qwen-chat" : defaults.string(forKey: "model")!
         canvasMegapixels = defaults.double(forKey: "canvasMegapixels")
         canvasAspectRatio = CanvasAspectRatio(rawValue: defaults.string(forKey: "canvasAspectRatio")!)!
         maxTokens = defaults.integer(forKey: "maxTokens")
@@ -128,8 +128,8 @@ final class ChatSession {
               let index = messages.firstIndex(where: { $0.id == message.id }),
               let prompt = messages[..<index].last(where: { $0.role == .user }) else { return }
         let modelID: String?
-        if message.metadata?.model == "Qwen3-VL 4B" { modelID = "qwen-vision" }
-        else if let recorded = message.metadata?.modelId { modelID = recorded }
+        if let recorded = message.metadata?.modelId { modelID = recorded == "qwen-vision" ? "qwen-chat" : recorded }
+        else if message.metadata?.model == "Qwen3-VL 4B" { modelID = "qwen-chat" }
         else { modelID = connection.models.first { $0.name == message.metadata?.model }?.id }
         guard let modelID else { generationError = "The original model for this response is unavailable."; return }
         // Repeat the original request's canvas and length; only the seed is new, so the retry is a fresh take.

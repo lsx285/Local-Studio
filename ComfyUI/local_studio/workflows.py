@@ -8,9 +8,7 @@ import folder_paths
 
 MODELS = [
     dict(id="qwen-chat", name="Qwen Heretic", family="chat", generation=False, editing=False,
-         encoder="qwen3-4b-heretic_nvfp4.safetensors", clip_type="stable_diffusion", steps=0, cfg=0, sampler="", scheduler=""),
-    dict(id="qwen-vision", name="Qwen Vision", family="chat", generation=False, editing=False,
-         encoder="qwen3vl_4b_bf16.safetensors", clip_type="stable_diffusion", steps=0, cfg=0, sampler="", scheduler=""),
+         encoder="qwen3-vl-4b-heretic_nvfp4.safetensors", clip_type="stable_diffusion", steps=0, cfg=0, sampler="", scheduler=""),
     dict(id="flux3-klein", name="FLUX 3 Klein", family="flux3", generation=True, editing=True,
          weights="flux3-image-klein-nvfp4-bdb.safetensors", encoder="qwen3vl_4b_bf16.safetensors",
          vae="flux2-vae.safetensors", clip_type="flux3", steps=16, cfg=1, sampler="euler", scheduler="simple", shift=2.77259),
@@ -65,7 +63,7 @@ def build_workflow(body):
         refs[f"images.image_{i + 1}"] = node(f"image{i}", "LoadImage", image=filename)
 
     if text_mode:
-        encoder = MODELS[1] if refs or (not enhance and model["id"] == "qwen-vision") else MODELS[0]
+        encoder = MODELS[0]
         clip = node("clip", "CLIPLoader", clip_name=encoder["encoder"], type=encoder["clip_type"], device="default")
         system = "You are a helpful assistant. Answer directly in the user's language."
         if enhance:
@@ -89,13 +87,11 @@ def build_workflow(body):
                 text = "<|vision_start|><|image_pad|><|vision_end|>" * len(refs) + text
             formatted += f"<|im_start|>{role}\n{text}<|im_end|>\n"
         formatted += "<|im_start|>assistant\n"
-        if encoder["id"] == "qwen-chat":
-            formatted += "<think>\n\n</think>\n\n"
         node("output", "LocalStudioTextStream", clip=clip, prompt=formatted,
              client_id=body["client_id"], request_id=body["request_id"], max_tokens=body.get("max_tokens", 1024),
              seed=seed, **refs)
         return {"prompt": graph, "metadata": {
-            "model": "Qwen3 4B Heretic" if encoder["id"] == "qwen-chat" else "Qwen3-VL 4B",
+            "model": "Qwen3-VL 4B Heretic",
             "model_id": encoder["id"], "seed": seed, "prompt": prompt, "encoder": encoder["encoder"]}}
 
     unet = node("model", "UNETLoader", unet_name=model["weights"], weight_dtype="default")

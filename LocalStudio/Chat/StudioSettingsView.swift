@@ -29,7 +29,7 @@ struct StudioSettingsView: View {
                     Picker("Maximum response length", selection: $session.maxTokens) {
                         ForEach([256, 512, 1024, 2048, 4096], id: \.self) { Text("\($0) tokens").tag($0) }
                     }
-                    Text("Qwen3 4B Heretic NVFP4 powers text chat and enhancement. Requests with attached images use Qwen3-VL 4B.")
+                    Text("Qwen3-VL 4B Heretic NVFP4 powers text chat, image-aware chat and enhancement.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("Models") {
