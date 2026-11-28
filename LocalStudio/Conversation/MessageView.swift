@@ -145,6 +145,7 @@ struct MessageView: View {
                         }
                     } label: { StudioIcon(.moreAction) }
                         .accessibilityLabel("Response options")
+                        .tint(.white)
                 }
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(Color(white: 0.76))

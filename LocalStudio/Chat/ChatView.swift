@@ -112,6 +112,7 @@ struct ChatView: View {
                                         StudioIcon(.moreHeader)
                                     }
                                     .accessibilityLabel("More options")
+                                    .tint(.white)
                                 }
                                 .padding(.horizontal, 4)
                                 .foregroundStyle(.white)

@@ -29,7 +29,7 @@ struct StudioIcon: View {
 
     var body: some View {
         Image("Icon-\(glyph.rawValue)")
-            .renderingMode(.template)
+            .renderingMode(glyph == .retry || glyph == .settings ? .original : .template)
             .resizable()
             .frame(width: glyph.size, height: glyph.size)
             .accessibilityHidden(true)
