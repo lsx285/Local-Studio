@@ -253,7 +253,7 @@ struct ArtworkViewer: View {
 
 // One image plane and one crop window. Uniform image scaling preserves its
 // proportions while the window morphs from the rail crop into the viewer.
-private struct ArtworkTransition: View, Animatable {
+private struct ArtworkTransition: View, @MainActor Animatable {
     let image: UIImage
     let baseSize: CGSize
     let sourceSize: CGSize
