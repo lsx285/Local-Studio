@@ -7,17 +7,34 @@ struct GenerationView: View {
     let image: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    private var imageStage: String {
+        guard let progress else { return "Sketching it out" }
+        if progress < 0.3 { return "Sketching it out" }
+        if progress < 0.6 { return "Making the first draft" }
+        if progress < 0.85 { return "Setting the scene" }
+        return "Polishing details"
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                ProgressView().controlSize(.small)
-                Text(stage).font(.system(size: 15)).foregroundStyle(.secondary)
-            }
-            if image {
-                TimelineView(.animation(minimumInterval: reduceMotion ? 1 : 1 / 30)) { timeline in
-                    let elapsed = max(0, timeline.date.timeIntervalSince(startedAt))
+        TimelineView(.animation(minimumInterval: reduceMotion ? 1 : 1 / 60)) { timeline in
+            let elapsed = max(0, timeline.date.timeIntervalSince(startedAt))
+            let motionElapsed = 1.85 + max(0, elapsed - 1.85).truncatingRemainder(dividingBy: 14.75)
+            Group {
+                if !image || progress == nil || elapsed < 1.85 {
+                    Circle().fill(StudioPalette.accent)
+                        .frame(width: 17, height: 17)
+                        .scaleEffect(reduceMotion ? 1 : 0.6 + 0.4 * (0.5 + 0.5 * cos(elapsed * 2 * .pi / 1.1)))
+                        .frame(width: 300, alignment: .leading)
+                        .accessibilityLabel(stage)
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(imageStage)
+                            .font(.system(size: 17))
+                            .lineLimit(1)
+                            .foregroundStyle(GenerationMotion.labelGradient(at: motionElapsed, text: imageStage, reduceMotion: reduceMotion))
+                            .frame(height: 21, alignment: .leading)
                         Canvas { context, _ in
-                            let position = min(Double(GenerationMotion.frameCount - 1), max(0, (reduceMotion ? 12 : elapsed.truncatingRemainder(dividingBy: 14)) * 59))
+                            let position = min(Double(GenerationMotion.frameCount - 1), max(0, ((reduceMotion ? 12 : motionElapsed) - 1.85) * 59))
                             let first = Int(position)
                             let second = min(first + 1, GenerationMotion.frameCount - 1)
                             let blend = position - Double(first)
@@ -42,24 +59,41 @@ struct GenerationView: View {
                         }
                         .frame(width: 300, height: 400)
                         .clipShape(.rect(cornerRadius: 16))
-
-                }
-                if let progress {
-                    ProgressView(value: progress)
-                    Text("\(Int(progress * 100))% of current sampling pass")
-                        .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                        .overlay(alignment: .bottomTrailing) {
+                            if let progress {
+                                Text("\(Int(progress * 100)) %")
+                                    .font(.system(size: 15).monospacedDigit())
+                                    .foregroundStyle(Color(white: 0.68))
+                                    .padding(.horizontal, 12).padding(.vertical, 8)
+                                    .glassEffect(.regular, in: .capsule)
+                                    .padding(20)
+                            }
+                        }
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(imageStage), \(Int((progress ?? 0) * 100)) percent")
                 }
             }
         }
-        .accessibilityElement(children: .combine)
     }
 }
 
 private enum GenerationMotion {
+    static func labelGradient(at elapsed: Double, text: String, reduceMotion: Bool) -> LinearGradient {
+        let frame = min(frameCount - 1, max(0, Int((elapsed - 1.85) * 59)))
+        let width = max(1, (text as NSString).size(withAttributes: [.font: UIFont.systemFont(ofSize: 17)]).width)
+        let stops = (0..<64).compactMap { index -> Gradient.Stop? in
+            let location = Double(index) / 63 * 300 / width
+            guard location <= 1 else { return nil }
+            let gray = reduceMotion ? 0.52 : Double(samples[16 + frame * 2704 + 2640 + index]) / 255
+            return Gradient.Stop(color: Color(white: gray), location: location)
+        }
+        return LinearGradient(stops: stops, startPoint: .leading, endPoint: .trailing)
+    }
     static let samples: [UInt8] = {
         let url = Bundle.main.url(forResource: "GenerationMotion", withExtension: "dots")!
         let data = try! Data(contentsOf: url)
-        precondition(data.prefix(8) == Data("LSDOTS02".utf8) && (data.count - 16).isMultiple(of: 2704))
+        precondition(data.count >= 16 + 2704 && data.prefix(8) == Data("LSDOTS02".utf8) && (data.count - 16).isMultiple(of: 2704))
         return Array(data)
     }()
     static let frameCount = (samples.count - 16) / 2704

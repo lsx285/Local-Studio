@@ -186,6 +186,7 @@ final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegat
         guard let baseURL else { throw StudioError(message: "No PC found. Start ComfyUI on the same network.") }
         let requestID = UUID().uuidString.lowercased()
         let clientID = UUID().uuidString.lowercased()
+        let isImageRequest = !enhance && models.first(where: { $0.id == model })?.family != "chat"
         activePromptID = requestID
         var components = URLComponents(url: baseURL.appending(path: "ws"), resolvingAgainstBaseURL: false)!
         components.scheme = "ws"
@@ -240,6 +241,7 @@ final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegat
                         return try await result(requestID, metadata: metadata)
                     }
                 case "progress":
+                    if isImageRequest && payload["node"] as? String != "sample" { continue }
                     if let value = payload["value"] as? Int, let total = payload["max"] as? Int { event(.progress(value, total)) }
                 case "execution_error": throw StudioError(message: payload["exception_message"] as? String ?? "Model execution failed.")
                 case "execution_interrupted": throw CancellationError()

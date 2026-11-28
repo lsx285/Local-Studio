@@ -144,7 +144,7 @@ final class ChatSession {
                         self.generationStage = self.isImageGeneration ? "Sampling image..." : "Writing..."
                     case .stage(let stage):
                         self.generationStage = stage
-                        self.generationProgress = nil
+                        if !self.isImageGeneration { self.generationProgress = nil }
                     }
                 }
                 try Task.checkCancellation()
