@@ -37,8 +37,8 @@ struct ChatView: View {
                 Color.black.ignoresSafeArea()
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 32) {
-                        ForEach(session.messages) { message in
-                            MessageView(message: message, openArtwork: openArtwork, reportArtworkFrame: { imageFrames[$0] = $1 }, canRetry: !session.isGenerating && !session.isEnhancing && session.connection.isConnected, retryResponse: session.retry) { message in
+                        ForEach(session.messages.filter { !$0.text.isEmpty || !$0.attachments.isEmpty }) { message in
+                            MessageView(message: message, isResponding: session.respondingMessageID == message.id, openArtwork: openArtwork, reportArtworkFrame: { imageFrames[$0] = $1 }, canRetry: !session.isGenerating && !session.isEnhancing && session.connection.isConnected, retryResponse: session.retry) { message in
                                 session.edit(message)
                                 composerFocused = true
                             }

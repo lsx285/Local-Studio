@@ -3,6 +3,7 @@ import Photos
 
 struct MessageView: View {
     let message: ChatMessage
+    let isResponding: Bool
     let openArtwork: (UUID) -> Void
     let reportArtworkFrame: (UUID, CGRect) -> Void
     let canRetry: Bool
@@ -114,7 +115,7 @@ struct MessageView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            if message.role == .assistant {
+            if message.role == .assistant && !isResponding && (!message.text.isEmpty || !message.attachments.isEmpty) {
                 HStack(spacing: 12) {
                     if !message.text.isEmpty {
                         Button { UIPasteboard.general.string = message.text } label: { StudioIcon(.copyAction) }

@@ -27,6 +27,7 @@ final class ChatSession {
     var attachments: [PhotoAttachment] = []
     var isTemporary = false
     var isGenerating = false
+    private(set) var respondingMessageID: UUID?
     var storageError: String?
     var generationStarted = Date.now
     var editingMessageID: UUID?
@@ -137,6 +138,7 @@ final class ChatSession {
         generationStage = "Queued on your PC..."
         generationProgress = nil
         isGenerating = true
+        respondingMessageID = responseID
         if messageID == nil && !isImageGeneration {
             messages.append(ChatMessage(id: responseID, role: .assistant, text: ""))
         }
@@ -165,6 +167,7 @@ final class ChatSession {
                 if let index = messages.firstIndex(where: { $0.id == responseID }) { messages[index] = response }
                 else { messages.append(response) }
                 isGenerating = false
+                respondingMessageID = nil
                 generationTask = nil
                 persist()
             } catch {
@@ -172,6 +175,7 @@ final class ChatSession {
                 if let previous, let index = messages.firstIndex(where: { $0.id == responseID }) { messages[index] = previous }
                 messages.removeAll { $0.id == responseID && $0.text.isEmpty && $0.attachments.isEmpty }
                 isGenerating = false
+                respondingMessageID = nil
                 generationTask = nil
                 if !(error is CancellationError) { generationError = error.localizedDescription }
                 persist()
@@ -218,6 +222,7 @@ final class ChatSession {
         generationTask?.cancel()
         generationTask = nil
         isGenerating = false
+        respondingMessageID = nil
         isEnhancing = false
         messages.removeAll { $0.role == .assistant && $0.text.isEmpty && $0.attachments.isEmpty }
         persist()
