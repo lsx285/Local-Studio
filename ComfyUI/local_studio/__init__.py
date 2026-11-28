@@ -52,7 +52,7 @@ class LocalStudioTextStream(io.ComfyNode):
 
 @PromptServer.instance.routes.get("/local-studio/catalog")
 async def get_catalog(request):
-    return web.json_response({"version": 3, "models": catalog()})
+    return web.json_response(catalog())
 
 
 @PromptServer.instance.routes.post("/local-studio/run")
@@ -83,7 +83,7 @@ async def advertise(app):
     zeroconf = AsyncZeroconf(ip_version=IPVersion.V4Only)
     service = ServiceInfo("_localstudio._tcp.local.", f"Local Studio on {socket.gethostname()}._localstudio._tcp.local.",
                           parsed_addresses=addresses, port=args.port,
-                          properties={"version": "1"}, server=f"{socket.gethostname()}.local.")
+                          server=f"{socket.gethostname()}.local.")
     await zeroconf.async_register_service(service)
     app["local_studio_discovery"] = (zeroconf, service)
 

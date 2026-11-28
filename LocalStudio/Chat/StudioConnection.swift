@@ -147,13 +147,11 @@ final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegat
         let candidate = connectedService
         do {
             let data = try await request("local-studio/catalog", timeout: 4)
-            struct Catalog: Decodable { let version: Int; let models: [StudioModel] }
             let decoder = JSONDecoder()
             decoder.keyDecodingStrategy = .convertFromSnakeCase
-            let catalog = try decoder.decode(Catalog.self, from: data)
+            let catalog = try decoder.decode([StudioModel].self, from: data)
             guard candidate == connectedService else { return }
-            guard catalog.version == 3 else { throw StudioError(message: "Update the Local Studio ComfyUI extension.") }
-            models = catalog.models
+            models = catalog
             isConnected = true
             status = "Connected"
             discoveryTask?.cancel()
