@@ -29,7 +29,11 @@ jobs:
         run: |
           set -euo pipefail
           # Only compiler errors are printed; everything else xcodebuild writes is dropped.
-          xcodebuild -quiet -project LocalStudio.xcodeproj -scheme LocalStudio             -configuration Release -sdk iphoneos27.2 -destination 'generic/platform=iOS'             -derivedDataPath build/device CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO             COMPILER_INDEX_STORE_ENABLE=NO build 2>&1             | { grep -E "error:" | sed -E 's|^([^:]+):([0-9]+):([0-9]+): error: (.*)$|::error file=,line=,col=::|; t; s|^.*error: (.*)$|::error::|' || true; }
+          xcodebuild -quiet -project LocalStudio.xcodeproj -scheme LocalStudio \
+            -configuration Release -sdk iphoneos27.2 -destination 'generic/platform=iOS' \
+            -derivedDataPath build/device CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO build 2>&1 \
+            | { grep -E "error:" | sed -E 's|^([^:]+):([0-9]+):([0-9]+): error: (.*)$|::error file=\1,line=\2,col=\3::\4|; t; s|^.*error: (.*)$|::error::\1|' || true; }
           mkdir -p build/Payload
           ditto build/device/Build/Products/Release-iphoneos/LocalStudio.app build/Payload/LocalStudio.app
           ditto -c -k --keepParent build/Payload build/LocalStudio.ipa
