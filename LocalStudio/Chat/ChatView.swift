@@ -37,29 +37,33 @@ struct ChatView: View {
                 Color.black.ignoresSafeArea()
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 32) {
-                        ForEach(session.messages.filter { !$0.text.isEmpty || !$0.attachments.isEmpty }) { message in
-                            MessageView(message: message, isResponding: session.respondingMessageID == message.id, availableWidth: max(1, width - 32), openArtwork: openArtwork, reportArtworkFrame: { imageFrames.values[$0] = $1 }, editArtwork: { photo in
-                                guard session.attachments.count < 8, let attachment = PhotoAttachment(data: photo.data) else {
-                                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                                    return
+                        ForEach(session.messages.filter { !$0.text.isEmpty || !$0.attachments.isEmpty || $0.id == session.respondingMessageID }) { message in
+                            if !message.text.isEmpty || !message.attachments.isEmpty {
+                                MessageView(message: message, isResponding: session.respondingMessageID == message.id, availableWidth: max(1, width - 32), openArtwork: openArtwork, reportArtworkFrame: { imageFrames.values[$0] = $1 }, editArtwork: { photo in
+                                    guard session.attachments.count < 8, let attachment = PhotoAttachment(data: photo.data) else {
+                                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                                        return
+                                    }
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.86)) { session.attachments.append(attachment) }
+                                    composerFocused = true
+                                }, canRetry: !session.isGenerating && !session.isEnhancing && session.connection.isConnected, retryResponse: session.retry) { message in
+                                    session.edit(message)
+                                    composerFocused = true
                                 }
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.86)) { session.attachments.append(attachment) }
-                                composerFocused = true
-                            }, canRetry: !session.isGenerating && !session.isEnhancing && session.connection.isConnected, retryResponse: session.retry) { message in
-                                session.edit(message)
-                                composerFocused = true
+                                .equatable()
+                                .transition(.asymmetric(
+                                    insertion: message.role == .user && !reduceMotion
+                                        ? .offset(y: max(0, viewportHeight - 116)).combined(with: .opacity) : .opacity,
+                                    removal: .opacity))
                             }
-                            .equatable()
-                            .transition(.asymmetric(
-                                insertion: message.role == .user && !reduceMotion
-                                    ? .offset(y: max(0, viewportHeight - 116)).combined(with: .opacity) : .opacity,
-                                removal: .opacity))
-                        }
-                        if session.isGenerating {
-                            GenerationView(startedAt: session.generationStarted, stage: session.generationStage,
-                                           progress: session.generationProgress, image: session.isImageGeneration)
-
+                            // Progress renders at the response's own position, so a retry of an earlier reply
+                            // generates in place instead of looking like a new message at the bottom.
+                            if message.id == session.respondingMessageID {
+                                GenerationView(startedAt: session.generationStarted, stage: session.generationStage,
+                                               progress: session.generationProgress, image: session.isImageGeneration,
+                                               aspectRatio: session.generationAspectRatio)
+                            }
                         }
                         Color.clear.frame(height: 1).id("bottom")
                             .onScrollVisibilityChange(threshold: 0.1) { visible in

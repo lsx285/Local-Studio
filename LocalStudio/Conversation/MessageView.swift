@@ -34,26 +34,16 @@ struct MessageView: View, Equatable {
                             .clipShape(.rect(cornerRadius: 16))
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { reportArtworkFrame(photo.id, $0) }
                             .onTapGesture { openArtwork(photo.id) }
-                            .overlay(alignment: .bottomTrailing) {
-                                ShareLink(item: Image(uiImage: photo.image), preview: SharePreview("Local Studio artwork", image: Image(uiImage: photo.image))) {
-                                    StudioIcon(.share)
-                                        .frame(width: 36, height: 36)
-                                }
-                                .accessibilityLabel("Share artwork")
-                                .foregroundStyle(.white)
-                                .glassEffect(.clear.interactive(), in: .circle)
-                                .padding(20)
-                            }
                             .accessibilityLabel("Generated artwork")
                             .contextMenu {
-                                Button { editArtwork(photo) } label: {
-                                    Label { Text("Edit") } icon: { StudioIcon(.edit) }
-                                }
                                 Button {
                                     UIPasteboard.general.image = photo.image
                                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 } label: {
                                     Label { Text("Copy") } icon: { StudioIcon(.copy) }
+                                }
+                                Button { editArtwork(photo) } label: {
+                                    Label { Text("Edit") } icon: { StudioIcon(.edit) }
                                 }
                                 Button {
                                     let data = photo.data

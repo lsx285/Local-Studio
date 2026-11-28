@@ -16,6 +16,8 @@ struct InlineMessageSelection: UIViewRepresentable {
         view.textContainerInset = .zero
         view.textContainer.lineFragmentPadding = 0
         view.contentInsetAdjustmentBehavior = .never
+        view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         view.tintColor = UIColor(red: 65 / 255, green: 166 / 255, blue: 247 / 255, alpha: 1)
 
         let paragraph = NSMutableParagraphStyle()
@@ -24,6 +26,14 @@ struct InlineMessageSelection: UIViewRepresentable {
             .font: UIFont.systemFont(ofSize: 17), .foregroundColor: color, .paragraphStyle: paragraph
         ])
         return view
+    }
+
+    /// Without this, a non-scrolling text view reports its single-line intrinsic width and the
+    /// prompt collapses onto one line; wrap at the measured bubble width instead.
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: InlineSelectionTextView, context: Context) -> CGSize? {
+        guard let width = proposal.width, width.isFinite else { return nil }
+        let fitted = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+        return CGSize(width: width, height: max(fitted.height, proposal.height ?? 0))
     }
 
     func updateUIView(_ view: InlineSelectionTextView, context: Context) {

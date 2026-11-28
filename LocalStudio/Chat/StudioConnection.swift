@@ -39,6 +39,10 @@ struct GenerationMetadata: Codable, Equatable, Sendable {
     let encoder: String?
     let vae: String?
     let sigmas: String?
+    /// Request settings recorded on the device so a retry repeats them exactly.
+    var width: Int?
+    var height: Int?
+    var maxTokens: Int?
 }
 
 struct StudioResult {

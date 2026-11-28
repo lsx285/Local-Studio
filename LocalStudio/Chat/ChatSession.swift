@@ -30,9 +30,10 @@ final class ChatSession {
     private(set) var respondingMessageID: UUID?
     var storageError: String?
     var generationStarted = Date.now
-    var editingMessageID: UUID?
     /// Increments once per finished response; drives completion haptics.
     private(set) var completedResponses = 0
+    /// Width ÷ height of the artwork being generated, for the progress artwork's frame.
+    private(set) var generationAspectRatio = 1.0
     /// The response being regenerated, restored if the retry is stopped.
     private var retryOriginal: ChatMessage?
     private var revision = 0
@@ -87,7 +88,6 @@ final class ChatSession {
         messages.removeAll()
         attachments.removeAll()
         draft = ""
-        editingMessageID = nil
         isTemporary = false
         persist()
     }
@@ -97,27 +97,30 @@ final class ChatSession {
         isTemporary.toggle()
     }
 
+    /// Moves a prompt back into the composer and drops it together with everything after it,
+    /// so the conversation continues from the edited prompt.
     func edit(_ message: ChatMessage) {
+        guard let index = messages.firstIndex(where: { $0.id == message.id }) else { return }
+        if isGenerating || isEnhancing { cancelGeneration() }
+        withAnimation(.easeOut(duration: 0.25)) {
+            messages.removeSubrange(index...)
+        }
         draft = message.text
         attachments = message.attachments
-        editingMessageID = message.id
+        persist()
     }
 
     func send() {
         guard canSend, !isGenerating else { return }
-        if let editingMessageID, let index = messages.firstIndex(where: { $0.id == editingMessageID }) {
-            messages.removeSubrange(index...)
-        }
         let prompt = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         let photos = attachments
         withAnimation(.spring(response: 0.44, dampingFraction: 0.86)) {
             messages.append(ChatMessage(role: .user, text: prompt, attachments: photos))
             draft = ""
             attachments = []
-            editingMessageID = nil
         }
         persist()
-        generate(prompt: prompt, photos: photos, modelID: selectedModelID)
+        generate(prompt: prompt, photos: photos, modelID: selectedModelID, width: canvasWidth, height: canvasHeight, maxTokens: maxTokens)
     }
 
     func retry(_ message: ChatMessage) {
@@ -129,21 +132,31 @@ final class ChatSession {
         else if let recorded = message.metadata?.modelId { modelID = recorded }
         else { modelID = connection.models.first { $0.name == message.metadata?.model }?.id }
         guard let modelID else { generationError = "The original model for this response is unavailable."; return }
-        generate(prompt: prompt.text, photos: prompt.attachments, modelID: modelID, replacing: message.id)
+        // Repeat the original request's canvas and length; only the seed is new, so the retry is a fresh take.
+        let metadata = message.metadata
+        generate(prompt: prompt.text, photos: prompt.attachments, modelID: modelID, replacing: message.id,
+                 width: metadata?.width ?? canvasWidth, height: metadata?.height ?? canvasHeight, maxTokens: metadata?.maxTokens ?? maxTokens)
     }
 
-    private func generate(prompt: String, photos: [PhotoAttachment], modelID: String, replacing messageID: UUID? = nil) {
+    private func generate(prompt: String, photos: [PhotoAttachment], modelID: String, replacing messageID: UUID? = nil,
+                          width: Int, height: Int, maxTokens: Int) {
         let responseID = messageID ?? UUID()
         let previous = messageID.flatMap { id in messages.first { $0.id == id } }
         let historyEnd = messageID.flatMap { id in messages.firstIndex { $0.id == id } } ?? messages.endIndex
         let history = messages[..<historyEnd].filter { $0.role == .user || !$0.text.isEmpty }.map { ["role": $0.role.rawValue, "text": $0.text] }
         isImageGeneration = connection.models.first { $0.id == modelID }?.family != "chat"
+        // Reference edits keep the first reference's proportions on the PC.
+        if let reference = photos.first?.image.size, reference.width > 0, reference.height > 0 {
+            generationAspectRatio = reference.width / reference.height
+        } else {
+            generationAspectRatio = Double(width) / Double(height)
+        }
         generationStarted = .now
         generationStage = "Queued on your PC..."
         generationProgress = nil
         isGenerating = true
         respondingMessageID = responseID
-        if messageID == nil && !isImageGeneration {
+        if messageID == nil {
             messages.append(ChatMessage(id: responseID, role: .assistant, text: ""))
         } else if let index = messages.firstIndex(where: { $0.id == responseID }) {
             // A retry hides the response it replaces at once; the new one streams or appears in its place.
@@ -163,7 +176,7 @@ final class ChatSession {
             var lastTextUpdate = clock.now - .seconds(1)
             do {
                 let result = try await connection.run(model: modelID, prompt: prompt, photos: photos.map(\.data), messages: history,
-                                                       width: canvasWidth, height: canvasHeight, maxTokens: maxTokens) { event in
+                                                       width: width, height: height, maxTokens: maxTokens) { event in
                     switch event {
                     case .text(let text):
                         let now = clock.now
@@ -183,8 +196,12 @@ final class ChatSession {
                     }
                 }
                 try Task.checkCancellation()
+                var metadata = result.metadata
+                metadata.width = width
+                metadata.height = height
+                metadata.maxTokens = maxTokens
                 let response = ChatMessage(id: responseID, role: .assistant, text: result.text,
-                                           attachments: result.images.compactMap { PhotoAttachment(data: $0.data, filename: $0.filename) }, metadata: result.metadata)
+                                           attachments: result.images.compactMap { PhotoAttachment(data: $0.data, filename: $0.filename) }, metadata: metadata)
                 if let index = messages.firstIndex(where: { $0.id == responseID }) { messages[index] = response }
                 else { messages.append(response) }
                 completedResponses += 1
@@ -237,7 +254,7 @@ final class ChatSession {
         for index in messages.indices where messages[index].role == .assistant {
             messages[index].attachments.removeAll { $0.id == id }
         }
-        messages.removeAll { $0.role == .assistant && $0.text.isEmpty && $0.attachments.isEmpty }
+        messages.removeAll { $0.role == .assistant && $0.text.isEmpty && $0.attachments.isEmpty && $0.id != respondingMessageID }
         persist()
     }
 
