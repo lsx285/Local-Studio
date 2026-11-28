@@ -12,10 +12,6 @@ struct StudioModel: Decodable, Identifiable, Sendable {
     /// Most photos one request may carry: what the model was trained on, or what its node takes.
     let maxImages: Int
     let installed: Bool
-    let steps: Int
-    let cfg: Double
-    let sampler: String
-    let scheduler: String
 
     var capability: String {
         if family == "chat" { return "Text chat and prompt enhancement" }

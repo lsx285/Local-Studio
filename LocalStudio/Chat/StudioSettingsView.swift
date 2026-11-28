@@ -32,25 +32,6 @@ struct StudioSettingsView: View {
                     Text("Qwen3-VL 4B Heretic NVFP4 powers text chat, image-aware chat and enhancement.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
-                Section("Models") {
-                    ForEach(session.connection.models) { model in
-                        VStack(alignment: .leading, spacing: 5) {
-                            HStack {
-                                Text(model.name)
-                                Spacer()
-                                Image(systemName: model.installed ? "checkmark.circle.fill" : "arrow.down.circle")
-                                    .foregroundStyle(model.installed ? Color.green : Color.secondary)
-                            }
-                            Text(model.capability).font(.caption).foregroundStyle(.secondary)
-                            if model.steps > 0 {
-                                Text("\(model.steps) steps · CFG \(model.cfg.formatted()) · \(model.sampler) · \(model.scheduler)")
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    Text("Sampling presets follow the published workflows. Fibo Turbo’s four-step preset is preserved.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
             }
             // Breathing room beneath the sheet's grabber now that the form has no title.
             .contentMargins(.top, 24, for: .scrollContent)

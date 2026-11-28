@@ -35,6 +35,9 @@ final class ChatSession {
     private(set) var generationAspectRatio = 1.0
     /// The response being regenerated, restored if the retry is stopped.
     private var retryOriginal: ChatMessage?
+    /// The prompt before the last enhancement, and the enhanced text that replaced it.
+    private var enhanceOriginal: String?
+    private var enhancedDraft: String?
     private var revision = 0
     private var generationTask: Task<Void, Never>?
     private var restored = false
@@ -48,6 +51,8 @@ final class ChatSession {
         if attachments.count > model.maxImages { return false }
         return hasPrompt || !attachments.isEmpty
     }
+    /// Offered until the enhanced prompt is edited or sent.
+    var canUndoEnhance: Bool { !isEnhancing && enhancedDraft == draft && enhanceOriginal != nil }
     var canEnhance: Bool {
         connection.isConnected && selectedModel?.installed == true && !isGenerating && !isEnhancing && hasPrompt
     }
@@ -224,11 +229,22 @@ final class ChatSession {
                     streamedDraft = text
                 }
                 try Task.checkCancellation()
-                if draft == streamedDraft { draft = result.text }
+                if draft == streamedDraft {
+                    draft = result.text
+                    enhanceOriginal = original
+                    enhancedDraft = result.text
+                }
             } catch {
                 if !Task.isCancelled { generationError = error.localizedDescription }
             }
         }
+    }
+
+    func undoEnhance() {
+        guard canUndoEnhance, let original = enhanceOriginal else { return }
+        draft = original
+        enhanceOriginal = nil
+        enhancedDraft = nil
     }
 
     func removeArtwork(_ id: UUID) {

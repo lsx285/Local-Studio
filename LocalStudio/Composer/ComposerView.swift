@@ -81,6 +81,7 @@ struct ComposerView: View {
             ? ComposerEditor.measuredHeight(text: draft, width: max(1, availableWidth - 56), reserve: showsExpansionControl) : 32
         let horizontalInset: CGFloat = fullScreen ? 0 : expanded || focused ? 12 : 34
         let canSend = session.canSend
+        let canUndoEnhance = session.canUndoEnhance
         let showsEnhance = session.isEnhancing || session.hasPrompt
         let showsSend = session.isGenerating || canSend
         VStack(spacing: 0) {
@@ -112,6 +113,9 @@ struct ComposerView: View {
                     if session.isEnhancing {
                         UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.7)
                         session.cancelGeneration()
+                    } else if canUndoEnhance {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        session.undoEnhance()
                     } else {
                         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
                         session.enhancePrompt()
@@ -120,23 +124,27 @@ struct ComposerView: View {
                     TimelineView(.animation(minimumInterval: 1 / 30, paused: !session.isEnhancing)) { timeline in
                         HStack(spacing: 5) {
                             // Palette rendering splits the symbol's layers: the wand holds still while its stars twinkle.
-                            Image(systemName: "wand.and.stars")
+                            Image(systemName: canUndoEnhance ? "arrow.uturn.backward" : "wand.and.stars")
                                 .symbolRenderingMode(.palette)
                                 .foregroundStyle(.primary, .primary.opacity(session.isEnhancing
                                     ? 0.6 + 0.4 * sin(timeline.date.timeIntervalSinceReferenceDate * 7) : 1))
-                            Text(session.isEnhancing ? "Enhancing" : "Enhance")
+                                .contentTransition(.symbolEffect(.replace))
+                            Text(canUndoEnhance ? "Undo" : session.isEnhancing ? "Enhancing" : "Enhance")
+                                .contentTransition(.interpolate)
                         }
                         .font(.system(size: 13, weight: .medium))
                     }
                 }
-                .disabled(!session.canEnhance && !session.isEnhancing)
+                // The finished enhancement offers Undo, which morphs back into Enhance once used.
+                .animation(controlAnimation, value: canUndoEnhance)
+                .disabled(!session.canEnhance && !session.isEnhancing && !canUndoEnhance)
                 .opacity(showsEnhance ? 1 : 0)
                 .scaleEffect(showsEnhance || reduceMotion ? 1 : 0.7)
                 .blur(radius: showsEnhance || reduceMotion ? 0 : 4)
                 .allowsHitTesting(showsEnhance)
                 .accessibilityHidden(!showsEnhance)
                 .animation(controlAnimation, value: showsEnhance)
-                .accessibilityLabel(session.isEnhancing ? "Stop prompt enhancement" : "Enhance prompt with Qwen")
+                .accessibilityLabel(session.isEnhancing ? "Stop prompt enhancement" : canUndoEnhance ? "Undo prompt enhancement" : "Enhance prompt with Qwen")
             }
             .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 6)
             if !session.attachments.isEmpty && !fullScreen {
