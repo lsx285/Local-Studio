@@ -29,8 +29,13 @@ struct MessageView: View, Equatable {
                     SentPhotoAttachments(photos: message.attachments, availableWidth: availableWidth)
                 } else {
                     ForEach(message.attachments) { photo in
+                        // Fit inside a square as wide as the column: landscape art spans the width,
+                        // portrait art is capped at that height, whatever the ratio.
+                        let pixels = photo.image.size
+                        let scale = min(availableWidth / max(1, pixels.width), availableWidth / max(1, pixels.height))
                         Image(uiImage: photo.image)
-                            .resizable().scaledToFit()
+                            .resizable()
+                            .frame(width: pixels.width * scale, height: pixels.height * scale)
                             .clipShape(.rect(cornerRadius: 16))
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { reportArtworkFrame(photo.id, $0) }
                             .onTapGesture { openArtwork(photo.id) }
