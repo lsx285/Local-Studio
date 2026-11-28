@@ -17,7 +17,7 @@ struct StudioSettingsView: View {
                     }
                     Picker("Aspect ratio", selection: $session.canvasAspectRatio) {
                         ForEach(CanvasAspectRatio.allCases) { ratio in
-                            Label { Text(ratio.rawValue) } icon: { Image(uiImage: ratio.icon) }
+                            Label { Text("\(ratio.rawValue) \(ratio.name)") } icon: { Image(uiImage: ratio.icon) }
                                 .tag(ratio)
                         }
                     }
@@ -65,17 +65,28 @@ struct StudioSettingsView: View {
 }
 
 enum CanvasAspectRatio: String, CaseIterable, Identifiable {
+    case poster = "2:3"
+    case photoPrint = "3:2"
+    case presentation = "4:3"
     case square = "1:1"
-    case portrait = "3:4"
-    case landscape = "4:3"
-    case portraitPhoto = "2:3"
-    case landscapePhoto = "3:2"
-    case portraitWide = "9:16"
+    case story = "9:16"
     case widescreen = "16:9"
-    case portraitCinema = "9:21"
-    case cinema = "21:9"
+    case cinematic = "21:9"
+    case banner = "5:2"
 
     var id: String { rawValue }
+    var name: String {
+        switch self {
+        case .poster: "Poster"
+        case .photoPrint: "Photo Print"
+        case .presentation: "Presentation"
+        case .square: "Square"
+        case .story: "Story"
+        case .widescreen: "Widescreen"
+        case .cinematic: "Cinematic"
+        case .banner: "Banner"
+        }
+    }
     var ratio: Double {
         let parts = rawValue.split(separator: ":").map { Double($0)! }
         return parts[0] / parts[1]
