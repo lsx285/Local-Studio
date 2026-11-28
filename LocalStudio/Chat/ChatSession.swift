@@ -56,7 +56,7 @@ final class ChatSession {
     init() {
         let defaults = UserDefaults.standard
         defaults.register(defaults: ["model": "qwen-chat", "canvasMegapixels": 1.0, "canvasAspectRatio": "1:1", "maxTokens": 1024])
-        selectedModelID = defaults.string(forKey: "model") == "qwen-vision" ? "qwen-chat" : defaults.string(forKey: "model")!
+        selectedModelID = defaults.string(forKey: "model")!
         canvasMegapixels = defaults.double(forKey: "canvasMegapixels")
         canvasAspectRatio = CanvasAspectRatio(rawValue: defaults.string(forKey: "canvasAspectRatio")!)!
         maxTokens = defaults.integer(forKey: "maxTokens")
@@ -126,16 +126,11 @@ final class ChatSession {
     func retry(_ message: ChatMessage) {
         guard !isGenerating, !isEnhancing, connection.isConnected, message.role == .assistant,
               let index = messages.firstIndex(where: { $0.id == message.id }),
-              let prompt = messages[..<index].last(where: { $0.role == .user }) else { return }
-        let modelID: String?
-        if let recorded = message.metadata?.modelId { modelID = recorded == "qwen-vision" ? "qwen-chat" : recorded }
-        else if message.metadata?.model == "Qwen3-VL 4B" { modelID = "qwen-chat" }
-        else { modelID = connection.models.first { $0.name == message.metadata?.model }?.id }
-        guard let modelID else { generationError = "The original model for this response is unavailable."; return }
-        // Repeat the original request's canvas and length; only the seed is new, so the retry is a fresh take.
-        let metadata = message.metadata
-        generate(prompt: prompt.text, photos: prompt.attachments, modelID: modelID, replacing: message.id,
-                 width: metadata?.width ?? canvasWidth, height: metadata?.height ?? canvasHeight, maxTokens: metadata?.maxTokens ?? maxTokens)
+              let prompt = messages[..<index].last(where: { $0.role == .user }),
+              let metadata = message.metadata else { return }
+        // Repeat the original request's model, canvas and length; only the seed is new, so the retry is a fresh take.
+        generate(prompt: prompt.text, photos: prompt.attachments, modelID: metadata.modelId, replacing: message.id,
+                 width: metadata.width, height: metadata.height, maxTokens: metadata.maxTokens)
     }
 
     private func generate(prompt: String, photos: [PhotoAttachment], modelID: String, replacing messageID: UUID? = nil,
@@ -196,12 +191,8 @@ final class ChatSession {
                     }
                 }
                 try Task.checkCancellation()
-                var metadata = result.metadata
-                metadata.width = width
-                metadata.height = height
-                metadata.maxTokens = maxTokens
                 let response = ChatMessage(id: responseID, role: .assistant, text: result.text,
-                                           attachments: result.images.compactMap { PhotoAttachment(data: $0.data, filename: $0.filename) }, metadata: metadata)
+                                           attachments: result.images.compactMap { PhotoAttachment(data: $0.data, filename: $0.filename) }, metadata: result.metadata)
                 if let index = messages.firstIndex(where: { $0.id == responseID }) { messages[index] = response }
                 else { messages.append(response) }
                 completedResponses += 1

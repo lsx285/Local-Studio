@@ -55,13 +55,14 @@ def build_workflow(body):
     model = next((m for m in MODELS if m["id"] == body["model"]), None)
     if model is None or not installed(model):
         raise ValueError("The selected model is not installed.")
-    images, enhance, prompt = body.get("images", []), body.get("enhance", False), body["prompt"]
+    images, enhance, prompt = body["images"], body["enhance"], body["prompt"]
+    width, height, max_tokens = int(body["width"]), int(body["height"]), int(body["max_tokens"])
     text_mode = enhance or model["family"] == "chat"
     if not text_mode and images and not model["editing"]:
         raise ValueError("This model supports generation only. Choose an editing model for attachments.")
     if not text_mode and not images and not model["generation"]:
         raise ValueError("This model needs an image to edit.")
-    seed = body.get("seed", secrets.randbelow(2**53))
+    seed = secrets.randbelow(2**53)
     graph = {}
 
     def node(key, kind, **inputs):
@@ -83,7 +84,7 @@ def build_workflow(body):
             turns = [{"role": "system", "text": SYSTEM_ENHANCE.get(model["id"], SYSTEM_ENHANCE[None])},
                      {"role": "user", "text": prompt}]
         else:
-            turns = [{"role": "system", "text": SYSTEM_CHAT}] + body.get("messages", [])
+            turns = [{"role": "system", "text": SYSTEM_CHAT}] + body["messages"]
             if turns[-1].get("role") != "user":
                 turns.append({"role": "user", "text": prompt})
         if any(turn["role"] not in ("system", "user", "assistant") for turn in turns):
@@ -93,15 +94,15 @@ def build_workflow(body):
         formatted = "".join(f"<|im_start|>{turn['role']}\n{vision if i == len(turns) - 1 else ''}{turn['text']}<|im_end|>\n"
                             for i, turn in enumerate(turns)) + "<|im_start|>assistant\n"
         node("output", "LocalStudioTextStream", clip=clip, prompt=formatted, client_id=body["client_id"],
-             request_id=body["request_id"], max_tokens=body.get("max_tokens", 1024), seed=seed, **refs)
+             request_id=body["request_id"], max_tokens=max_tokens, seed=seed, **refs)
         return {"prompt": graph, "metadata": {"model": "Qwen3-VL 4B Heretic", "model_id": chat["id"], "seed": seed,
-                                              "prompt": prompt, "encoder": chat["encoder"]}}
+                                              "prompt": prompt, "encoder": chat["encoder"],
+                                              "width": width, "height": height, "max_tokens": max_tokens}}
 
     family = model["family"]
     unet = node("model", "UNETLoader", unet_name=model["weights"], weight_dtype="default")
     clip = node("clip", "CLIPLoader", clip_name=model["encoder"], type=model["clip_type"], device="default")
     vae = node("vae", "VAELoader", vae_name=model["vae"])
-    width, height = int(body.get("width", 1024)), int(body.get("height", 1024))
     negative_prompt = NEGATIVE.get(family, "")
     if family == "flux3":
         unet = node("sampling", "ModelSamplingFlux", model=unet, max_shift=model["shift"], base_shift=model["shift"],
@@ -148,5 +149,6 @@ def build_workflow(body):
     node("output", "SaveImage", images=node("decode", "VAEDecode", samples=samples, vae=vae),
          filename_prefix="LocalStudio/" + model["id"])
     metadata.update(model=model["name"], model_id=model["id"], seed=seed, prompt=prompt, negative_prompt=negative_prompt,
-                    diffusion_model=model["weights"], encoder=model["encoder"], vae=model["vae"])
+                    diffusion_model=model["weights"], encoder=model["encoder"], vae=model["vae"],
+                    width=width, height=height, max_tokens=max_tokens)
     return {"prompt": graph, "metadata": metadata}

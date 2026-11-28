@@ -25,7 +25,7 @@ struct StudioModel: Decodable, Identifiable, Sendable {
 
 struct GenerationMetadata: Codable, Equatable, Sendable {
     let model: String
-    var modelId: String?
+    let modelId: String
     var requestSeconds: Double?
     let seed: UInt64
     let prompt: String
@@ -39,10 +39,10 @@ struct GenerationMetadata: Codable, Equatable, Sendable {
     let encoder: String?
     let vae: String?
     let sigmas: String?
-    /// Request settings recorded on the device so a retry repeats them exactly.
-    var width: Int?
-    var height: Int?
-    var maxTokens: Int?
+    /// Request settings, so a retry repeats them exactly.
+    let width: Int
+    let height: Int
+    let maxTokens: Int
 }
 
 struct StudioResult {
@@ -274,7 +274,7 @@ final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegat
                     guard payload["prompt_id"] as? String == requestID else { continue }
                     switch type {
                     case "executed":
-                        // The output node's result arrives here, so no history lookup is needed afterwards.
+                        // The output node's result arrives here.
                         if payload["node"] as? String == "output", let value = payload["output"] {
                             output = try? JSONDecoder().decode(StudioOutput.self, from: JSONSerialization.data(withJSONObject: value))
                         }
@@ -284,7 +284,7 @@ final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegat
                             event(.stage(node == "decode" ? "Decoding image…" : node == "output" ? "Saving result…" : "Running model…"))
                         } else if payload["node"] is NSNull {
                             metadata.requestSeconds = Date.now.timeIntervalSince(started)
-                            return try await result(requestID, output: output, metadata: metadata)
+                            return try await result(output: output, metadata: metadata)
                         }
                     case "progress":
                         if isImageRequest && payload["node"] as? String != "sample" { continue }
@@ -312,13 +312,7 @@ final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegat
         }
     }
 
-    private func result(_ id: String, output: StudioOutput?, metadata: GenerationMetadata) async throws -> StudioResult {
-        var output = output
-        if output == nil {
-            // A cached run skips the executed event; history still holds its outputs.
-            struct Entry: Decodable { let outputs: [String: StudioOutput] }
-            output = try JSONDecoder().decode([String: Entry].self, from: await request("history/\(id)"))[id]?.outputs["output"]
-        }
+    private func result(output: StudioOutput?, metadata: GenerationMetadata) async throws -> StudioResult {
         guard let output else { throw StudioError(message: "ComfyUI returned no result.") }
         var images: [StudioImage] = []
         for image in output.images ?? [] {
