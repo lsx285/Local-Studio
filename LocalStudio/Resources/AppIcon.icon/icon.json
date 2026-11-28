@@ -19,15 +19,6 @@
                 "solid": "srgb:0.96000,0.96000,0.97000,1.00000"
               }
             }
-          ],
-          "opacity-specializations": [
-            {
-              "value": 0.9
-            },
-            {
-              "appearance": "tinted",
-              "value": 1
-            }
           ]
         },
         {
@@ -53,23 +44,12 @@
         "kind": "neutral",
         "opacity": 0.5
       },
+      "translucency": {
+        "enabled": true,
+        "value": 0.25
+      },
       "lighting": "combined",
-      "specular": true,
-      "translucency-specializations": [
-        {
-          "value": {
-            "enabled": true,
-            "value": 0.25
-          }
-        },
-        {
-          "appearance": "dark",
-          "value": {
-            "enabled": true,
-            "value": 0.15
-          }
-        }
-      ]
+      "specular": true
     },
     {
       "name": "Canvas",
@@ -90,15 +70,6 @@
                 "solid": "srgb:0.55000,0.55000,0.58000,1.00000"
               }
             }
-          ],
-          "opacity-specializations": [
-            {
-              "value": 0.85
-            },
-            {
-              "appearance": "dark",
-              "value": 0.45
-            }
           ]
         }
       ],
@@ -106,24 +77,13 @@
         "kind": "neutral",
         "opacity": 0.3
       },
+      "translucency": {
+        "enabled": true,
+        "value": 0.5
+      },
       "lighting": "individual",
       "specular": true,
-      "blur-material": 0.5,
-      "translucency-specializations": [
-        {
-          "value": {
-            "enabled": true,
-            "value": 0.5
-          }
-        },
-        {
-          "appearance": "dark",
-          "value": {
-            "enabled": true,
-            "value": 0.7
-          }
-        }
-      ]
+      "blur-material": 0.5
     }
   ],
   "supported-platforms": {
