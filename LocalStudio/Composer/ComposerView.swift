@@ -80,6 +80,24 @@ struct ComposerView: View {
     private var overflowing: Bool { draftHeight > 168 }
     private var showsExpansionControl: Bool { fullScreen || draftHeight >= 96 }
 
+    private func pasteImages(_ images: [Data]) {
+        guard !loadingPhotos, session.attachments.count < 8 else { return }
+        loadingPhotos = true
+        Task { @MainActor in
+            defer { loadingPhotos = false }
+            for data in images.prefix(8 - session.attachments.count) {
+                guard let resized = await Self.downsample(data), let photo = PhotoAttachment(data: resized) else {
+                    photoError = true
+                    PasteDiagnostics.shared.record("Clipboard image import failed during downsampling")
+                    continue
+                }
+                guard session.attachments.count < 8 else { break }
+                withAnimation(railAnimation) { session.attachments.append(photo) }
+                PasteDiagnostics.shared.record("Clipboard image attached: composer attachments=\(session.attachments.count)")
+            }
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if !session.attachments.isEmpty && !fullScreen {
@@ -113,7 +131,8 @@ struct ComposerView: View {
             ZStack(alignment: .bottom) {
                 ComposerEditor(text: $session.draft, focused: $focused, expanded: expanded, overflowing: !fullScreen && overflowing,
                                fullScreen: fullScreen, transitioning: changingFullscreen,
-                               showsExpansionControl: showsExpansionControl && !fullScreen)
+                               showsExpansionControl: showsExpansionControl && !fullScreen,
+                               pasteImageLimit: loadingPhotos ? 0 : max(0, 8 - session.attachments.count), pasteImages: pasteImages)
                     .frame(height: fullScreen ? max(100, availableHeight - 158) : inlineEditorHeight)
                     .onGeometryChange(for: CGRect.self) { geometry in
                         geometry.frame(in: .named("composerGestures"))

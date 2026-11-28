@@ -48,7 +48,7 @@ struct ArtworkViewer: View {
         }
     }
 
-    private func toggleInfo() { withAnimation(motion) { info.toggle() } }
+    private func toggleInfo() { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) { info.toggle() } }
 
     var body: some View {
         GeometryReader { geometry in
@@ -73,15 +73,15 @@ struct ArtworkViewer: View {
                 if ready {
                     TabView(selection: $selected) {
                         ForEach(request.photos) { item in
-                            ZoomArtwork(image: item.photo.image, zoomed: $zoomed) {
+                            ZoomArtwork(image: item.photo.image, area: area, reduceMotion: reduceMotion, zoomed: $zoomed) {
                                 withAnimation(motion) { chrome.toggle() }
                             }
                             .tag(item.id)
                         }
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
-                    .frame(width: area.width, height: area.height)
-                    .position(x: area.midX, y: area.midY)
+                    .frame(width: size.width, height: size.height)
+                    .position(x: size.width / 2, y: size.height / 2)
                     .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded { value in
                         if !zoomed && !info && abs(value.translation.height) > 90 && abs(value.translation.height) > abs(value.translation.width) * 1.5 { close() }
                     })
@@ -123,30 +123,36 @@ struct ArtworkViewer: View {
                     .opacity(expanded && !info ? 1 : 0)
                     .allowsHitTesting(!info)
 
+                    if !request.limited {
+                        RoundedRectangle(cornerRadius: 20).fill(Color(white: 0.1))
+                            .frame(height: 260)
+                            .padding(.horizontal, 28)
+                            .padding(.bottom, max(12, bottom - 6) + 62)
+                            .frame(maxHeight: .infinity, alignment: .bottom)
+                            .offset(y: info ? 0 : 290)
+                            .opacity(info && expanded ? 1 : 0)
+                            .allowsHitTesting(info)
+                    }
                     VStack(spacing: 14) {
-                        if info && !request.limited {
-                            RoundedRectangle(cornerRadius: 20).fill(Color(white: 0.1))
-                                .frame(height: 260)
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
-                        } else {
-                            ScrollViewReader { proxy in
-                                ScrollView(.horizontal) {
-                                    HStack(spacing: 3) {
-                                        ForEach(request.photos) { item in
-                                            Button { withAnimation(motion) { selected = item.id } } label: {
-                                                Image(uiImage: item.photo.image).resizable().scaledToFill()
-                                                    .frame(width: item.id == selected ? 30 : 20, height: 30)
-                                                    .clipShape(.rect(cornerRadius: 3))
-                                            }.id(item.id)
-                                            .padding(.horizontal, item.id == selected ? 8 : 0)
-                                        }
-                                    }.padding(.horizontal, 28)
-                                }
-                                .scrollIndicators(.hidden).frame(height: 34)
-                                .onAppear { proxy.scrollTo(selected, anchor: .center) }
-                                .onChange(of: selected) { withAnimation(motion) { proxy.scrollTo(selected, anchor: .center) } }
+                        ScrollViewReader { proxy in
+                            ScrollView(.horizontal) {
+                                HStack(spacing: 3) {
+                                    ForEach(request.photos) { item in
+                                        Button { withAnimation(motion) { selected = item.id } } label: {
+                                            Image(uiImage: item.photo.image).resizable().scaledToFill()
+                                                .frame(width: item.id == selected ? 30 : 20, height: 30)
+                                                .clipShape(.rect(cornerRadius: 3))
+                                        }.id(item.id)
+                                        .padding(.horizontal, item.id == selected ? 8 : 0)
+                                    }
+                                }.padding(.horizontal, 28)
                             }
+                            .scrollIndicators(.hidden).frame(height: 34)
+                            .onAppear { proxy.scrollTo(selected, anchor: .center) }
+                            .onChange(of: selected) { withAnimation(motion) { proxy.scrollTo(selected, anchor: .center) } }
                         }
+                        .opacity(info ? 0 : 1)
+                        .allowsHitTesting(!info)
                         HStack {
                             ShareLink(item: Image(uiImage: current.photo.image), preview: SharePreview("Artwork", image: Image(uiImage: current.photo.image))) {
                                 StudioIcon(.viewerShare).frame(width: 48, height: 48)
@@ -188,50 +194,46 @@ struct ArtworkViewer: View {
 
 private struct ZoomArtwork: UIViewRepresentable {
     let image: UIImage
+    let area: CGRect
+    let reduceMotion: Bool
     @Binding var zoomed: Bool
     let tap: () -> Void
     func makeCoordinator() -> Coordinator { Coordinator(self) }
-    func makeUIView(context: Context) -> UIScrollView {
+    func makeUIView(context: Context) -> ArtworkScrollView {
         let view = ArtworkScrollView()
         view.delegate = context.coordinator
         view.minimumZoomScale = 1; view.maximumZoomScale = 6
         view.showsVerticalScrollIndicator = false; view.showsHorizontalScrollIndicator = false
         view.contentInsetAdjustmentBehavior = .never
-        let imageView = context.coordinator.imageView
-        view.contentImage = imageView
-        imageView.image = image; imageView.contentMode = .scaleAspectFit
-        view.addSubview(imageView)
+        view.addSubview(view.contentImage)
         let double = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.doubleTap(_:)))
         double.numberOfTapsRequired = 2; view.addGestureRecognizer(double)
         let single = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.singleTap))
         single.require(toFail: double); view.addGestureRecognizer(single)
         return view
     }
-    func updateUIView(_ view: UIScrollView, context: Context) {
+    func updateUIView(_ view: ArtworkScrollView, context: Context) {
         context.coordinator.parent = self
-        if view.zoomScale == 1 {
-            context.coordinator.imageView.frame = view.bounds
-            view.contentSize = view.bounds.size
-        }
+        view.configure(image: image, area: area, animated: !reduceMotion)
     }
-    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UIScrollView, context: Context) -> CGSize? {
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: ArtworkScrollView, context: Context) -> CGSize? {
         CGSize(width: proposal.width ?? 1, height: proposal.height ?? 1)
     }
     @MainActor final class Coordinator: NSObject, UIScrollViewDelegate {
         var parent: ZoomArtwork
-        let imageView = UIImageView()
         init(_ parent: ZoomArtwork) { self.parent = parent }
-        func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? { (scrollView as? ArtworkScrollView)?.contentImage }
         func scrollViewDidZoom(_ scrollView: UIScrollView) {
+            (scrollView as? ArtworkScrollView)?.centerZoomedImage()
             let value = scrollView.zoomScale > 1.01
             if parent.zoomed != value { parent.zoomed = value }
         }
         @objc func singleTap() { parent.tap() }
         @objc func doubleTap(_ gesture: UITapGestureRecognizer) {
-            guard let scroll = gesture.view as? UIScrollView else { return }
+            guard let scroll = gesture.view as? ArtworkScrollView else { return }
             if scroll.zoomScale > 1.01 { scroll.setZoomScale(1, animated: true) }
             else {
-                let point = gesture.location(in: imageView)
+                let point = gesture.location(in: scroll.contentImage)
                 let size = CGSize(width: scroll.bounds.width / 3, height: scroll.bounds.height / 3)
                 scroll.zoom(to: CGRect(x: point.x - size.width / 2, y: point.y - size.height / 2, width: size.width, height: size.height), animated: true)
             }
@@ -240,12 +242,69 @@ private struct ZoomArtwork: UIViewRepresentable {
 }
 
 private final class ArtworkScrollView: UIScrollView {
-    var contentImage: UIImageView?
+    let contentImage = UIImageView()
+    private var fitArea = CGRect.zero
+    private var laidOutSize = CGSize.zero
+    private var configuring = false
+    private var pendingFit = false
+
+    func configure(image: UIImage, area: CGRect, animated: Bool) {
+        let changedImage = contentImage.image !== image
+        guard changedImage || fitArea != area else { return }
+        let animate = animated && window != nil && contentImage.image != nil && laidOutSize != .zero
+        contentImage.image = image
+        contentImage.contentMode = .scaleAspectFit
+        fitArea = area
+        if !changedImage && zoomScale > 1.01 {
+            pendingFit = true
+            return
+        }
+        applyFit(animated: animate)
+    }
+
+    private func applyFit(animated: Bool) {
+        guard bounds.width > 0, bounds.height > 0, let image = contentImage.image else { return }
+        configuring = true
+        setZoomScale(1, animated: false)
+        let ratio = image.size.width / max(1, image.size.height)
+        let width = min(fitArea.width, fitArea.height * ratio)
+        let height = width / ratio
+        let insets = UIEdgeInsets(top: max(0, fitArea.midY - height / 2), left: max(0, fitArea.midX - width / 2),
+                                  bottom: max(0, bounds.height - fitArea.midY - height / 2), right: max(0, bounds.width - fitArea.midX - width / 2))
+        let layout = {
+            self.contentImage.frame = CGRect(x: 0, y: 0, width: width, height: height)
+            self.contentSize = CGSize(width: width, height: height)
+            self.contentInset = insets
+            self.contentOffset = CGPoint(x: -insets.left, y: -insets.top)
+        }
+        if animated { UIView.animate(withDuration: 0.3, delay: 0, options: [.beginFromCurrentState, .curveEaseInOut], animations: layout) }
+        else { UIView.performWithoutAnimation(layout) }
+        configuring = false
+    }
+
+    func centerZoomedImage() {
+        guard !configuring else { return }
+        if zoomScale <= 1.001 {
+            if pendingFit {
+                pendingFit = false
+                applyFit(animated: false)
+                return
+            }
+            // Restore the gallery fit area without resizing the full-screen viewport.
+            let image = contentImage.frame
+            contentInset = UIEdgeInsets(top: max(0, fitArea.midY - image.height / 2), left: max(0, fitArea.midX - image.width / 2),
+                                        bottom: max(0, bounds.height - fitArea.midY - image.height / 2), right: max(0, bounds.width - fitArea.midX - image.width / 2))
+        } else {
+            let x = max(0, (bounds.width - contentImage.frame.width) / 2)
+            let y = max(0, (bounds.height - contentImage.frame.height) / 2)
+            contentInset = UIEdgeInsets(top: y, left: x, bottom: y, right: x)
+        }
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
-        if zoomScale == 1, contentImage?.bounds.size != bounds.size {
-            contentImage?.frame = CGRect(origin: .zero, size: bounds.size)
-            contentSize = bounds.size
-        }
+        guard bounds.size != laidOutSize else { return }
+        laidOutSize = bounds.size
+        applyFit(animated: false)
     }
 }

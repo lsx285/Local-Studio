@@ -10,10 +10,14 @@ struct ComposerEditor: UIViewRepresentable {
     let fullScreen: Bool
     let transitioning: Bool
     let showsExpansionControl: Bool
+    let pasteImageLimit: Int
+    let pasteImages: ([Data]) -> Void
 
     func makeUIView(context: Context) -> ComposerNativeTextView {
         let view = ComposerNativeTextView(frame: .zero, textContainer: nil)
         view.delegate = context.coordinator
+        view.receiveImages = pasteImages
+        view.pasteImageLimit = pasteImageLimit
         view.backgroundColor = .clear
         view.font = .systemFont(ofSize: 17)
         view.textColor = .white
@@ -37,6 +41,8 @@ struct ComposerEditor: UIViewRepresentable {
 
     func updateUIView(_ view: ComposerNativeTextView, context: Context) {
         context.coordinator.parent = self
+        view.receiveImages = pasteImages
+        view.pasteImageLimit = pasteImageLimit
         let paragraph = NSMutableParagraphStyle()
         paragraph.minimumLineHeight = 24
         paragraph.maximumLineHeight = 24
@@ -136,8 +142,12 @@ struct ComposerEditor: UIViewRepresentable {
 }
 
 final class ComposerNativeTextView: UITextView {
+    var receiveImages: (([Data]) -> Void)?
+    var pasteImageLimit = 0
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-        let allowed = super.canPerformAction(action, withSender: sender)
+        let nativeAllowed = super.canPerformAction(action, withSender: sender)
+        let imagePaste = action == #selector(paste(_:)) && pasteImageLimit > 0 && receiveImages != nil && UIPasteboard.general.hasImages
+        let allowed = nativeAllowed || imagePaste
         if action == #selector(paste(_:)) {
             PasteDiagnostics.shared.record("Paste menu eligibility=\(allowed), hasImages=\(UIPasteboard.general.hasImages), hasStrings=\(UIPasteboard.general.hasStrings), responder=\(isFirstResponder)")
         }
@@ -147,13 +157,24 @@ final class ComposerNativeTextView: UITextView {
     override func paste(_ sender: Any?) {
         let board = UIPasteboard.general
         PasteDiagnostics.shared.record("Paste invoked: items=\(board.numberOfItems), types=\(board.types.joined(separator: ",")), accepts=\(pasteConfiguration?.acceptableTypeIdentifiers.joined(separator: ",") ?? "nil"), textLength=\((text ?? "").utf16.count)")
+        if board.hasImages {
+            guard pasteImageLimit > 0, let receiveImages else {
+                PasteDiagnostics.shared.record("Image paste skipped: attachment limit reached or photo import busy")
+                return
+            }
+            let images = board.images ?? board.image.map { [$0] } ?? []
+            let data = images.prefix(pasteImageLimit).compactMap { $0.pngData() }
+            PasteDiagnostics.shared.record("Clipboard image decode: images=\(images.count), decoded=\(data.count)")
+            if !data.isEmpty { receiveImages(data) }
+            return
+        }
         super.paste(sender)
         var attachments = 0
         let contents = attributedText ?? NSAttributedString(string: "")
         contents.enumerateAttribute(.attachment, in: NSRange(location: 0, length: contents.length)) { value, _, _ in
             if value != nil { attachments += 1 }
         }
-        PasteDiagnostics.shared.record("Native paste returned: textLength=\((text ?? "").utf16.count), nativeAttachments=\(attachments); composer image-attachment ingestion is not installed")
+        PasteDiagnostics.shared.record("Native text paste returned: textLength=\((text ?? "").utf16.count), nativeAttachments=\(attachments)")
     }
 
     private let placeholder = UILabel()
