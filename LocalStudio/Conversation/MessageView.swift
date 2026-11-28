@@ -177,12 +177,12 @@ private struct SentPhotoAttachments: View {
         VStack(alignment: .trailing, spacing: 4) {
             if photos.count == 1, let photo = photos.first {
                 let size = fittedSize(photo.image.size)
-                thumbnail(photo, size: size)
+                attachmentImage(photo, size: size)
             } else {
                 ForEach(Array(stride(from: 0, to: photos.count, by: columns)), id: \.self) { start in
                     HStack(spacing: 4) {
                         ForEach(Array(photos[start..<min(start + columns, photos.count)])) { photo in
-                            thumbnail(photo, size: CGSize(width: tileSize, height: tileSize))
+                            attachmentImage(photo, size: CGSize(width: tileSize, height: tileSize))
                         }
                     }
                 }
@@ -197,7 +197,7 @@ private struct SentPhotoAttachments: View {
         return CGSize(width: size.width * scale, height: size.height * scale)
     }
 
-    private func thumbnail(_ photo: PhotoAttachment, size: CGSize) -> some View {
+    private func attachmentImage(_ photo: PhotoAttachment, size: CGSize) -> some View {
         Image(uiImage: photo.image)
             .resizable().scaledToFill()
             .frame(width: size.width, height: size.height)

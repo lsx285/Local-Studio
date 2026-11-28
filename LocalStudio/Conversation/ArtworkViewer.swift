@@ -1,23 +1,9 @@
 import SwiftUI
 import UIKit
-import ImageIO
 
 struct ViewerPhoto: Identifiable {
     let photo: PhotoAttachment
     let date: Date
-    let thumbnail: UIImage
-    init(photo: PhotoAttachment, date: Date) {
-        self.photo = photo; self.date = date
-        if let source = CGImageSourceCreateWithData(photo.data as CFData, nil),
-           let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceShouldCacheImmediately: true,
-                kCGImageSourceThumbnailMaxPixelSize: 96
-           ] as CFDictionary) {
-            thumbnail = UIImage(cgImage: image)
-        } else { thumbnail = photo.image }
-    }
     var id: UUID { photo.id }
 }
 
@@ -205,7 +191,7 @@ struct ArtworkViewer: View {
                                     HStack(spacing: 3) {
                                         ForEach(request.photos) { item in
                                             Button { withAnimation(motion) { selected = item.id } } label: {
-                                                Image(uiImage: item.thumbnail).resizable().scaledToFill()
+                                                Image(uiImage: item.photo.image).resizable().scaledToFill()
                                                     .frame(width: item.id == selected ? 30 : 20, height: 30)
                                                     .clipShape(.rect(cornerRadius: 3))
                                             }

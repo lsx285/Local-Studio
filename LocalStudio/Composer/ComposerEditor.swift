@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 /// One persistent text input across compact and multiline layouts.
 struct ComposerEditor: UIViewRepresentable {
@@ -162,9 +163,22 @@ final class ComposerNativeTextView: UITextView {
                 PasteDiagnostics.shared.record("Image paste skipped: attachment limit reached or photo import busy")
                 return
             }
-            let images = board.images ?? board.image.map { [$0] } ?? []
-            let data = images.prefix(pasteImageLimit).compactMap { $0.pngData() }
-            PasteDiagnostics.shared.record("Clipboard image decode: images=\(images.count), decoded=\(data.count)")
+            // Prefer the clipboard's original encoded representation; only encode
+            // when another app supplies a UIImage without original file data.
+            let originals: [Data] = board.items.prefix(pasteImageLimit).compactMap { item in
+                for (type, value) in item where UTType(type)?.conforms(to: .image) == true {
+                    if let data = value as? Data { return data }
+                }
+                if let image = item.values.compactMap({ $0 as? UIImage }).first { return image.pngData() }
+                return nil
+            }
+            let data: [Data]
+            if !originals.isEmpty { data = originals }
+            else {
+                let images = board.images ?? board.image.map { [$0] } ?? []
+                data = images.prefix(pasteImageLimit).compactMap { $0.pngData() }
+            }
+            PasteDiagnostics.shared.record("Clipboard image import: images=\(data.count), original representations=\(originals.count)")
             if !data.isEmpty { receiveImages(data) }
             return
         }

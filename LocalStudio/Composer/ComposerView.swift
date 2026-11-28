@@ -1,6 +1,5 @@
 import PhotosUI
 import SwiftUI
-import ImageIO
 
 struct ComposerView: View {
     @Bindable var session: ChatSession
@@ -81,22 +80,19 @@ struct ComposerView: View {
     private var showsExpansionControl: Bool { fullScreen || draftHeight >= 96 }
 
     private func pasteImages(_ images: [Data]) {
-        guard !loadingPhotos, session.attachments.count < 8 else { return }
-        loadingPhotos = true
-        Task { @MainActor in
-            defer { loadingPhotos = false }
-            for data in images.prefix(8 - session.attachments.count) {
-                guard let resized = await Self.downsample(data), let photo = PhotoAttachment(data: resized) else {
-                    photoError = true
-                    PasteDiagnostics.shared.record("Clipboard image import failed during downsampling")
-                    continue
-                }
-                guard session.attachments.count < 8 else { break }
-                withAnimation(railAnimation) { session.attachments.append(photo) }
-                PasteDiagnostics.shared.record("Clipboard image attached: composer attachments=\(session.attachments.count)")
+        guard !loadingPhotos else { return }
+        for data in images.prefix(max(0, 8 - session.attachments.count)) {
+            guard let photo = PhotoAttachment(data: data) else {
+                photoError = true
+                PasteDiagnostics.shared.record("Clipboard image import failed: unsupported image data")
+                continue
             }
+            withAnimation(railAnimation) { session.attachments.append(photo) }
+            PasteDiagnostics.shared.record("Original clipboard image attached: composer attachments=\(session.attachments.count)")
         }
     }
+
+    private var horizontalInset: CGFloat { fullScreen ? 0 : expanded || focused ? 12 : 34 }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -125,7 +121,10 @@ struct ComposerView: View {
                     }
                     .padding(8)
                 }
+                .frame(width: max(1, availableWidth - horizontalInset * 2), height: 136)
                 .scrollIndicators(.hidden)
+                .scrollClipDisabled(false)
+                .clipShape(UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28))
 
             }
             ZStack(alignment: .bottom) {
@@ -204,7 +203,7 @@ struct ComposerView: View {
                 .padding(.trailing, fullScreen ? 16 : 8)
             }
         }
-        .padding(.horizontal, fullScreen ? 0 : expanded || focused ? 12 : 34)
+        .padding(.horizontal, horizontalInset)
         .coordinateSpace(name: "composerGestures")
         .simultaneousGesture(DragGesture(minimumDistance: 12, coordinateSpace: .named("composerGestures")).onChanged { value in
             guard !pickerPresented, !changingFullscreen,
@@ -217,7 +216,7 @@ struct ComposerView: View {
         .overlay(alignment: .bottom) {
             if pickerPresented {
                 PhotosPicker(selection: $pendingSelection, maxSelectionCount: max(1, 8 - session.attachments.count),
-                             selectionBehavior: .continuousAndOrdered, matching: .images) { EmptyView() }
+                             selectionBehavior: .continuousAndOrdered, matching: .images, preferredItemEncoding: .current) { EmptyView() }
                     .photosPickerStyle(.inline)
                     .photosPickerAccessoryVisibility(.hidden)
                     .photosPickerDisabledCapabilities([.selectionActions, .search, .collectionNavigation, .stagingArea])
@@ -274,7 +273,7 @@ struct ComposerView: View {
             }
         }
         .photosPicker(isPresented: $fullPickerPresented, selection: $selection,
-                      maxSelectionCount: max(1, 8 - session.attachments.count), selectionBehavior: .ordered, matching: .images)
+                      maxSelectionCount: max(1, 8 - session.attachments.count), selectionBehavior: .ordered, matching: .images, preferredItemEncoding: .current)
         .task(id: selection) {
             guard !selection.isEmpty else { return }
             loadingPhotos = true
@@ -283,7 +282,7 @@ struct ComposerView: View {
                 guard !Task.isCancelled else { return }
                 do {
                     if let data = try await item.loadTransferable(type: Data.self),
-                       let resized = await Self.downsample(data), let photo = PhotoAttachment(data: resized), session.attachments.count < 8 {
+                       let photo = PhotoAttachment(data: data), session.attachments.count < 8 {
                         session.attachments.append(photo)
                     } else { photoError = true }
                 } catch { photoError = true }
@@ -293,22 +292,5 @@ struct ComposerView: View {
         .alert("Photo couldn’t be opened", isPresented: $photoError) {
             Button("OK", role: .cancel) { }
         } message: { Text("Try another photo or download the original from iCloud first.") }
-    }
-
-    /// Decode off the main actor and cap memory before a photo enters the view tree.
-    nonisolated private static func downsample(_ data: Data) async -> Data? {
-        await Task.detached(priority: .userInitiated) { () -> Data? in
-            guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-                  let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                    kCGImageSourceCreateThumbnailFromImageAlways: true,
-                    kCGImageSourceCreateThumbnailWithTransform: true,
-                    kCGImageSourceThumbnailMaxPixelSize: 1600
-                  ] as CFDictionary) else { return nil }
-            let result = NSMutableData()
-            guard let destination = CGImageDestinationCreateWithData(result, "public.jpeg" as CFString, 1, nil) else { return nil }
-            CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.85] as CFDictionary)
-            guard CGImageDestinationFinalize(destination) else { return nil }
-            return result as Data
-        }.value
     }
 }
