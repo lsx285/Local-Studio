@@ -1,9 +1,23 @@
 import SwiftUI
 import UIKit
+import ImageIO
 
 struct ViewerPhoto: Identifiable {
     let photo: PhotoAttachment
     let date: Date
+    let thumbnail: UIImage
+    init(photo: PhotoAttachment, date: Date) {
+        self.photo = photo; self.date = date
+        if let source = CGImageSourceCreateWithData(photo.data as CFData, nil),
+           let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceShouldCacheImmediately: true,
+                kCGImageSourceThumbnailMaxPixelSize: 96
+           ] as CFDictionary) {
+            thumbnail = UIImage(cgImage: image)
+        } else { thumbnail = photo.image }
+    }
     var id: UUID { photo.id }
 }
 
@@ -28,6 +42,7 @@ struct ArtworkViewer: View {
     @State private var chrome = true
     @State private var zoomed = false
     @State private var confirmDelete = false
+    @State private var transitionSource: CGRect?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(request: ViewerRequest, sourceFrames: [UUID: CGRect], edit: @escaping (PhotoAttachment) -> Void,
@@ -35,6 +50,7 @@ struct ArtworkViewer: View {
         self.request = request; self.sourceFrames = sourceFrames
         self.edit = edit; self.remove = remove; self.dismiss = dismiss
         _selected = State(initialValue: request.selectedID)
+        _transitionSource = State(initialValue: sourceFrames[request.selectedID])
     }
 
     private var current: ViewerPhoto { request.photos.first { $0.id == selected } ?? request.photos[0] }
@@ -42,6 +58,7 @@ struct ArtworkViewer: View {
 
     private func close(after: (() -> Void)? = nil) {
         guard !closing else { return }
+        transitionSource = sourceFrames[selected]
         closing = true; ready = false
         withAnimation(motion, completionCriteria: .removed) { expanded = false } completion: {
             dismiss(); after?()
@@ -58,28 +75,27 @@ struct ArtworkViewer: View {
             let top = max(geometry.safeAreaInsets.top, windowInsets.top)
             let bottom = max(12, max(geometry.safeAreaInsets.bottom, windowInsets.bottom))
             let origin = geometry.frame(in: .global).origin
-            let source = sourceFrames[selected]?.offsetBy(dx: -origin.x, dy: -origin.y)
+            let source = transitionSource?.offsetBy(dx: -origin.x, dy: -origin.y)
             let area = chrome
                 ? CGRect(x: 0, y: info ? 0 : top + 54, width: size.width,
                          height: max(100, info ? size.height - bottom - 360 : size.height - top - bottom - 154))
                 : CGRect(origin: .zero, size: size)
             let ratio = current.photo.image.size.width / max(1, current.photo.image.size.height)
-            let width = min(area.width, area.height * ratio)
+            let width = max(1, min(area.width, area.height * ratio))
             let target = CGRect(x: area.midX - width / 2, y: area.midY - width / ratio / 2,
                                 width: width, height: width / ratio)
             let frame = expanded ? target : (source ?? target)
             ZStack(alignment: .topLeading) {
                 Color.black.opacity(expanded ? 1 : 0).ignoresSafeArea()
-                if ready {
-                    TabView(selection: $selected) {
-                        ForEach(request.photos) { item in
-                            ZoomArtwork(image: item.photo.image, area: area, reduceMotion: reduceMotion, zoomed: $zoomed) {
-                                withAnimation(motion) { chrome.toggle() }
-                            }
-                            .ignoresSafeArea(.container, edges: .all)
-                            .tag(item.id)
+                TabView(selection: $selected) {
+                    ForEach(request.photos) { item in
+                        ZoomArtwork(image: item.photo.image, area: area, reduceMotion: reduceMotion, zoomed: $zoomed) {
+                            withAnimation(motion) { chrome.toggle() }
                         }
+                        .ignoresSafeArea(.container, edges: .all)
+                        .tag(item.id)
                     }
+                }
                     .tabViewStyle(.page(indexDisplayMode: .never))
                     .ignoresSafeArea(.container, edges: .all)
                     .frame(width: size.width, height: size.height)
@@ -87,13 +103,19 @@ struct ArtworkViewer: View {
                     .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded { value in
                         if !zoomed && !info && abs(value.translation.height) > 90 && abs(value.translation.height) > abs(value.translation.width) * 1.5 { close() }
                     })
-                } else {
-                    Image(uiImage: current.photo.image).resizable().scaledToFit()
-                        .frame(width: frame.width, height: frame.height)
-                        .clipShape(.rect(cornerRadius: expanded ? 0 : 16))
-                        .position(x: frame.midX, y: frame.midY)
-                        .opacity(expanded || source != nil ? 1 : 0)
-                }
+                    .opacity(ready ? 1 : 0)
+                    .allowsHitTesting(ready && !closing)
+                    .accessibilityHidden(!ready)
+                // Keep a constant backing size: only its composited transform moves.
+                // The native pager stays mounted, avoiding setup/teardown at the handoff.
+                Image(uiImage: current.photo.image).resizable().scaledToFit()
+                    .frame(width: target.width, height: target.height)
+                    .clipShape(.rect(cornerRadius: expanded ? 0 : 16 / max(0.001, frame.width / target.width)))
+                    .scaleEffect(x: frame.width / target.width, y: frame.height / target.height)
+                    .position(x: frame.midX, y: frame.midY)
+                    .opacity(ready ? 0 : (expanded || source != nil ? 1 : 0))
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
                 if chrome {
                     HStack {
                         Button { close() } label: { StudioIcon(.back) }
@@ -136,29 +158,34 @@ struct ArtworkViewer: View {
                             .allowsHitTesting(info)
                     }
                     VStack(spacing: 14) {
-                        ScrollViewReader { proxy in
-                            ScrollView(.horizontal) {
-                                HStack(spacing: 3) {
-                                    ForEach(request.photos) { item in
-                                        Button { withAnimation(motion) { selected = item.id } } label: {
-                                            Image(uiImage: item.photo.image).resizable().scaledToFill()
-                                                .frame(width: item.id == selected ? 30 : 20, height: 30)
-                                                .clipShape(.rect(cornerRadius: 3))
-                                        }.id(item.id)
-                                        .padding(.horizontal, item.id == selected ? 8 : 0)
+                        GeometryReader { rail in
+                            ScrollViewReader { proxy in
+                                ScrollView(.horizontal) {
+                                    HStack(spacing: 3) {
+                                        ForEach(request.photos) { item in
+                                            Button { withAnimation(motion) { selected = item.id } } label: {
+                                                Image(uiImage: item.thumbnail).resizable().scaledToFill()
+                                                    .frame(width: item.id == selected ? 30 : 20, height: 30)
+                                                    .clipShape(.rect(cornerRadius: 3))
+                                            }
+                                            .padding(.horizontal, item.id == selected ? 12 : 0)
+                                            .id(item.id)
+                                        }
                                     }
+                                    .animation(reduceMotion ? nil : .smooth(duration: 0.28), value: selected)
                                 }
-                                .padding(.horizontal, 28)
-                                .animation(reduceMotion ? nil : .smooth(duration: 0.28), value: selected)
-                            }
-                            .scrollIndicators(.hidden).frame(height: 34)
-                            .onAppear { proxy.scrollTo(selected, anchor: .center) }
-                            .onChange(of: selected) {
-                                withAnimation(reduceMotion ? nil : .smooth(duration: 0.28)) {
-                                    proxy.scrollTo(selected, anchor: .center)
+                                .contentMargins(.horizontal, max(0, (rail.size.width - 54) / 2), for: .scrollContent)
+                                .scrollIndicators(.hidden)
+                                .onAppear { proxy.scrollTo(selected, anchor: .center) }
+                                .onChange(of: selected) {
+                                    withAnimation(reduceMotion ? nil : .smooth(duration: 0.28)) {
+                                        proxy.scrollTo(selected, anchor: .center)
+                                    }
                                 }
                             }
                         }
+                        .frame(height: 34)
+                        .padding(.horizontal, -28)
                         .opacity(info ? 0 : 1)
                         .allowsHitTesting(!info)
                         HStack {
