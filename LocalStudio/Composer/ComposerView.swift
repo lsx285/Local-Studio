@@ -124,7 +124,7 @@ struct ComposerView: View {
                                 .symbolRenderingMode(.palette)
                                 .foregroundStyle(.primary, .primary.opacity(session.isEnhancing
                                     ? 0.6 + 0.4 * sin(timeline.date.timeIntervalSinceReferenceDate * 7) : 1))
-                            Text(session.isEnhancing ? "Enhancing..." : "Enhance")
+                            Text(session.isEnhancing ? "Enhancing" : "Enhance")
                         }
                         .font(.system(size: 13, weight: .medium))
                     }
