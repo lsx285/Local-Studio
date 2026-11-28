@@ -52,13 +52,7 @@ struct StudioSettingsView: View {
                     Text("Sampling presets follow the published workflows. Qwen Turbo’s fixed sigma schedule and Fibo Turbo’s four-step preset are preserved.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
-                Section("About") {
-                    LabeledContent("Local Studio", value: "1.0")
-                    Text("Messages stay on this iPhone. Prompts and original attachments are sent to the discovered PC for inference.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
             }
-            .navigationTitle("Settings")
         }
         .tint(.white)
         .onDisappear { session.saveSettings() }
