@@ -19,6 +19,15 @@
                 "solid": "srgb:0.96000,0.96000,0.97000,1.00000"
               }
             }
+          ],
+          "opacity-specializations": [
+            {
+              "value": 0.9
+            },
+            {
+              "appearance": "tinted",
+              "value": 1
+            }
           ]
         },
         {
@@ -69,6 +78,15 @@
               "value": {
                 "solid": "srgb:0.55000,0.55000,0.58000,1.00000"
               }
+            }
+          ],
+          "opacity-specializations": [
+            {
+              "value": 0.85
+            },
+            {
+              "appearance": "dark",
+              "value": 0.45
             }
           ]
         }
@@ -127,6 +145,5 @@
         }
       }
     }
-  ],
-  "color-space-for-untagged-svg-colors": "srgb"
+  ]
 }
