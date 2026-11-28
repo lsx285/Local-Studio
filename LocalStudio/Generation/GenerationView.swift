@@ -36,7 +36,7 @@ struct GenerationView: View {
                         Text(imageStage)
                             .font(.system(size: 17))
                             .lineLimit(1)
-                            .foregroundStyle(GenerationMotion.shimmer(at: motionTime, text: imageStage, reduceMotion: reduceMotion))
+                            .foregroundStyle(GenerationMotion.shimmer(at: motionTime, text: imageStage, font: .systemFont(ofSize: 17), reduceMotion: reduceMotion))
                             .frame(height: 21, alignment: .leading)
                         // Same footprint the finished artwork takes: its longer side spans the column width.
                         let ratio = aspectRatio.isFinite && aspectRatio > 0 ? aspectRatio : 0.75
@@ -105,7 +105,7 @@ struct GenerationView: View {
     }
 }
 
-private enum GenerationMotion {
+enum GenerationMotion {
     struct Blob {
         let wx, px, wx2, px2, wy, py, wy2, py2, wa, pa, size: Double
     }
@@ -134,17 +134,19 @@ private enum GenerationMotion {
         }
     }
 
-    /// A soft dark band sweeping the stage label left to right, matched to the reference recording:
+    /// A soft dark band sweeping a label left to right, matched to the reference recording:
     /// about 365 pt/s, a new pass every 1.49 s, dimming the text to roughly a quarter at its center.
-    static func shimmer(at time: Double, text: String, reduceMotion: Bool) -> LinearGradient {
+    /// Measured at 17 pt; band, travel and speed scale with the font so every size gets the same sweep.
+    static func shimmer(at time: Double, text: String, font: UIFont, reduceMotion: Bool) -> LinearGradient {
         let lit = 0.69
         guard !reduceMotion else { return LinearGradient(colors: [Color(white: lit)], startPoint: .leading, endPoint: .trailing) }
-        let width = max(1, (text as NSString).size(withAttributes: [.font: UIFont.systemFont(ofSize: 17)]).width)
-        let center = -100 + (time * 365).truncatingRemainder(dividingBy: 544)
+        let scale = Double(font.pointSize) / 17
+        let width = max(1, (text as NSString).size(withAttributes: [.font: font]).width)
+        let center = scale * (-100 + (time * 365).truncatingRemainder(dividingBy: 544))
         let stops = (0..<32).map { index in
             let location = Double(index) / 31
             let distance = location * width - center
-            return Gradient.Stop(color: Color(white: lit * (1 - 0.74 * exp(-distance * distance / 2738))), location: location)
+            return Gradient.Stop(color: Color(white: lit * (1 - 0.74 * exp(-distance * distance / (2738 * scale * scale)))), location: location)
         }
         return LinearGradient(stops: stops, startPoint: .leading, endPoint: .trailing)
     }

@@ -3,6 +3,8 @@ import UIKit
 
 struct StudioSettingsView: View {
     @Bindable var session: ChatSession
+    /// The form's full height, so the sheet ends right below the last section.
+    @State private var contentHeight: CGFloat = 420
 
     var body: some View {
         NavigationStack {
@@ -35,12 +37,19 @@ struct StudioSettingsView: View {
             }
             // Breathing room beneath the sheet's grabber now that the form has no title.
             .contentMargins(.top, 24, for: .scrollContent)
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentSize.height + geometry.contentInsets.top + geometry.contentInsets.bottom
+            } action: { _, height in
+                contentHeight = height
+            }
+            .scrollBounceBehavior(.basedOnSize)
             // Detent-like ticks while scrubbing resolution, and a click for each menu choice.
             .sensoryFeedback(.selection, trigger: session.canvasMegapixels)
             .sensoryFeedback(.selection, trigger: session.canvasAspectRatio)
             .sensoryFeedback(.selection, trigger: session.maxTokens)
         }
         .tint(.white)
+        .presentationDetents([.height(contentHeight)])
         .onDisappear { session.saveSettings() }
     }
 }

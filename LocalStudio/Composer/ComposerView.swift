@@ -20,6 +20,10 @@ struct ComposerView: View {
     @State private var photoError = false
     @State private var galleryDrag: CGFloat = 0
     @State private var editorGestureBounds: CGRect = .null
+    /// The shimmer's clock, so each enhancement's first sweep starts at the label's leading edge.
+    @State private var enhanceStarted = Date.now
+    /// Hides the enhanced prompt for the moment before the original replaces it.
+    @State private var undoFade = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var railAnimation: Animation? { reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.86) }
@@ -83,6 +87,7 @@ struct ComposerView: View {
         let canSend = session.canSend
         let canUndoEnhance = session.canUndoEnhance
         let showsEnhance = session.isEnhancing || session.hasPrompt
+        let enhanceLabel = canUndoEnhance ? "Undo" : session.isEnhancing ? "Enhancing" : "Enhance"
         let showsSend = session.isGenerating || canSend
         VStack(spacing: 0) {
             HStack(spacing: 12) {
@@ -114,29 +119,48 @@ struct ComposerView: View {
                         UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.7)
                         session.cancelGeneration()
                     } else if canUndoEnhance {
+                        guard !undoFade else { return }
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        session.undoEnhance()
+                        // The enhanced prompt blurs away, then the original blurs in as the composer springs to its size.
+                        withAnimation(reduceMotion ? .easeOut(duration: 0.1) : .easeIn(duration: 0.12)) {
+                            undoFade = true
+                        } completion: {
+                            withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.4, dampingFraction: 0.86)) {
+                                session.undoEnhance()
+                                undoFade = false
+                            }
+                        }
                     } else {
                         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
                         session.enhancePrompt()
                     }
                 } label: {
-                    TimelineView(.animation(minimumInterval: 1 / 30, paused: !session.isEnhancing)) { timeline in
+                    TimelineView(.animation(minimumInterval: 1 / 60, paused: !session.isEnhancing)) { timeline in
+                        let time = timeline.date.timeIntervalSince(enhanceStarted)
                         HStack(spacing: 5) {
-                            // Palette rendering splits the symbol's layers: the wand holds still while its stars twinkle.
-                            Image(systemName: canUndoEnhance ? "arrow.uturn.backward" : "wand.and.stars")
-                                .symbolRenderingMode(.palette)
-                                .foregroundStyle(.primary, .primary.opacity(session.isEnhancing
-                                    ? 0.6 + 0.4 * sin(timeline.date.timeIntervalSinceReferenceDate * 7) : 1))
-                                .contentTransition(.symbolEffect(.replace))
-                            Text(canUndoEnhance ? "Undo" : session.isEnhancing ? "Enhancing" : "Enhance")
-                                .contentTransition(.interpolate)
+                            // Wand and arrow cross-blur in place on the label's spring, in step with the text.
+                            ZStack {
+                                // Palette rendering splits the symbol's layers: the wand holds still while its stars twinkle.
+                                Image(systemName: canUndoEnhance ? "arrow.uturn.backward" : "wand.and.stars")
+                                    .symbolRenderingMode(.palette)
+                                    .foregroundStyle(.primary, .primary.opacity(session.isEnhancing ? 0.6 + 0.4 * sin(time * 7) : 1))
+                                    .id(canUndoEnhance)
+                                    .transition(reduceMotion ? AnyTransition.opacity : AnyTransition(.blurReplace))
+                            }
+                            // Only the letters that differ roll over: Enhance gains "ing" in place.
+                            Text(enhanceLabel)
+                                .foregroundStyle(session.isEnhancing
+                                    ? AnyShapeStyle(GenerationMotion.shimmer(at: time, text: enhanceLabel,
+                                                                             font: .systemFont(ofSize: 13, weight: .medium), reduceMotion: reduceMotion))
+                                    : AnyShapeStyle(.primary))
+                                .contentTransition(.numericText())
                         }
                         .font(.system(size: 13, weight: .medium))
                     }
                 }
-                // The finished enhancement offers Undo, which morphs back into Enhance once used.
-                .animation(controlAnimation, value: canUndoEnhance)
+                .onChange(of: session.isEnhancing) { _, enhancing in
+                    if enhancing { enhanceStarted = .now }
+                }
                 .disabled(!session.canEnhance && !session.isEnhancing && !canUndoEnhance)
                 .opacity(showsEnhance ? 1 : 0)
                 .scaleEffect(showsEnhance || reduceMotion ? 1 : 0.7)
@@ -147,6 +171,8 @@ struct ComposerView: View {
                 .accessibilityLabel(session.isEnhancing ? "Stop prompt enhancement" : canUndoEnhance ? "Undo prompt enhancement" : "Enhance prompt with Qwen")
             }
             .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 6)
+            // Enhance, Enhancing and Undo differ in width; the button resizes and slides on the same spring as its label.
+            .animation(controlAnimation, value: enhanceLabel)
             if !session.attachments.isEmpty && !fullScreen {
                 ScrollView(.horizontal) {
                     HStack(spacing: 7) {
@@ -184,6 +210,8 @@ struct ComposerView: View {
                                fullScreen: fullScreen, transitioning: changingFullscreen,
                                showsExpansionControl: showsExpansionControl && !fullScreen,
                                pasteImageLimit: loadingPhotos ? 0 : session.attachmentSlots, pasteImages: pasteImages)
+                    .opacity(undoFade ? 0 : 1)
+                    .blur(radius: undoFade && !reduceMotion ? 6 : 0)
                     .frame(height: fullScreen ? max(100, availableHeight - 194) : inlineEditorHeight)
                     .onGeometryChange(for: CGRect.self) { geometry in
                         geometry.frame(in: .named("composerGestures"))

@@ -241,7 +241,6 @@ struct ChatView: View {
             .task { session.connection.discover(); await session.restore() }
             .sheet(isPresented: $settingsPresented) {
                 StudioSettingsView(session: session)
-                    .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
