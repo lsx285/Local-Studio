@@ -76,10 +76,12 @@ struct ArtworkViewer: View {
                             ZoomArtwork(image: item.photo.image, area: area, reduceMotion: reduceMotion, zoomed: $zoomed) {
                                 withAnimation(motion) { chrome.toggle() }
                             }
+                            .ignoresSafeArea(.container, edges: .all)
                             .tag(item.id)
                         }
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
+                    .ignoresSafeArea(.container, edges: .all)
                     .frame(width: size.width, height: size.height)
                     .position(x: size.width / 2, y: size.height / 2)
                     .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded { value in
@@ -145,11 +147,17 @@ struct ArtworkViewer: View {
                                         }.id(item.id)
                                         .padding(.horizontal, item.id == selected ? 8 : 0)
                                     }
-                                }.padding(.horizontal, 28)
+                                }
+                                .padding(.horizontal, 28)
+                                .animation(reduceMotion ? nil : .smooth(duration: 0.28), value: selected)
                             }
                             .scrollIndicators(.hidden).frame(height: 34)
                             .onAppear { proxy.scrollTo(selected, anchor: .center) }
-                            .onChange(of: selected) { withAnimation(motion) { proxy.scrollTo(selected, anchor: .center) } }
+                            .onChange(of: selected) {
+                                withAnimation(reduceMotion ? nil : .smooth(duration: 0.28)) {
+                                    proxy.scrollTo(selected, anchor: .center)
+                                }
+                            }
                         }
                         .opacity(info ? 0 : 1)
                         .allowsHitTesting(!info)
