@@ -15,9 +15,6 @@ MODELS = [
     dict(id="moss-sft", name="MOSS Image SFT", family="moss", generation=True, editing=False,
          weights="moss_image_sft_nvfp4.safetensors", encoder="qwen3.5_9b_w4a8_gptq.safetensors",
          vae="flux2-vae_small.safetensors", clip_type="moss_image", steps=25, cfg=2.5, sampler="er_sde", scheduler="simple"),
-    dict(id="qwen-turbo", name="Qwen Image 2.1 Turbo", family="qwen", generation=True, editing=True,
-         weights="qwen_image_2.1_turbo_nvfp4_BdB_SR.safetensors", encoder="qwen3vl_8b_turbo_nvfp4.safetensors",
-         vae="qwen_image_2.1_vae_bf16.safetensors", clip_type="qwen_image", steps=8, cfg=1, sampler="euler", scheduler="official Turbo sigmas"),
     dict(id="fibo-edit", name="Fibo 2.0 Edit Turbo", family="fibo", generation=False, editing=True,
          weights="fibo2_edit_turbo_nvfp4.safetensors", encoder="qwen3vl_4b_bf16.safetensors",
          vae="flux2-vae.safetensors", clip_type="fibo2", steps=4, cfg=1, sampler="euler", scheduler="simple"),
@@ -37,7 +34,6 @@ SYSTEM_ENHANCE = {
                  'aesthetics, style_medium and text_render. Preserve exact requested visible text. Output JSON only.'),
 }
 NEGATIVE = {"moss": "worst quality, bad anatomy, watermark, jpeg artifact"}
-TURBO_SIGMAS = "1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0.0"
 
 
 def installed(model):
@@ -130,16 +126,9 @@ def build_workflow(body):
             positive, negative, latent = ["reference", 0], ["reference", 1], ["reference", 2]
 
     metadata = {key: model[key] for key in ("steps", "cfg", "sampler", "scheduler")}
-    if model["id"] == "qwen-turbo":
-        samples = node("sample", "SamplerCustomAdvanced", noise=node("noise", "RandomNoise", noise_seed=seed),
-                       guider=node("guider", "CFGGuider", model=unet, positive=positive, negative=negative, cfg=1.0),
-                       sampler=node("sampler", "KSamplerSelect", sampler_name="euler"),
-                       sigmas=node("sigmas", "ManualSigmas", sigmas=TURBO_SIGMAS), latent_image=latent)
-        metadata["sigmas"] = TURBO_SIGMAS
-    else:
-        samples = node("sample", "KSampler", model=unet, positive=positive, negative=negative, latent_image=latent,
-                       seed=seed, steps=model["steps"], cfg=model["cfg"], sampler_name=model["sampler"],
-                       scheduler=model["scheduler"], denoise=1.0)
+    samples = node("sample", "KSampler", model=unet, positive=positive, negative=negative, latent_image=latent,
+                   seed=seed, steps=model["steps"], cfg=model["cfg"], sampler_name=model["sampler"],
+                   scheduler=model["scheduler"], denoise=1.0)
     node("output", "SaveImage", images=node("decode", "VAEDecode", samples=samples, vae=vae),
          filename_prefix="LocalStudio/" + model["id"])
     metadata.update(model=model["name"], model_id=model["id"], seed=seed, prompt=prompt, negative_prompt=negative_prompt,

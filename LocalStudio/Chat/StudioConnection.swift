@@ -36,7 +36,6 @@ struct GenerationMetadata: Codable, Equatable, Sendable {
     let diffusionModel: String?
     let encoder: String?
     let vae: String?
-    let sigmas: String?
     /// Request settings, so a retry repeats them exactly.
     let width: Int
     let height: Int

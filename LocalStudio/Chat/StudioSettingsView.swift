@@ -48,7 +48,7 @@ struct StudioSettingsView: View {
                             }
                         }
                     }
-                    Text("Sampling presets follow the published workflows. Qwen Turbo’s fixed sigma schedule and Fibo Turbo’s four-step preset are preserved.")
+                    Text("Sampling presets follow the published workflows. Fibo Turbo’s four-step preset is preserved.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }

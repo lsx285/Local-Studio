@@ -183,7 +183,10 @@ struct ArtworkViewer: View {
                                     Label { Text("Edit") } icon: { StudioIcon(.edit) }
                                 }
                             }
-                        } label: { StudioIcon(.moreHeader) }
+                        } label: {
+                            // The artwork's dots sit 2.9 pt right of its box center; this circle centers them.
+                            StudioIcon(.moreHeader).offset(x: -2.895833, y: -0.25)
+                        }
                         .glassEffect(.regular.interactive(), in: .circle)
                         .tint(.white)
                     }
@@ -253,7 +256,12 @@ struct ArtworkViewer: View {
                                 HStack(spacing: 8) {
                                     Button { toggleInfo() } label: {
                                         Group {
-                                            if info { Image(systemName: "info.circle.fill").font(.system(size: StudioGlyph.viewerInfo.size)) }
+                                            if info {
+                                                // Sized to the outline glyph's circle (19.5 of its 24-unit artwork), so both states match.
+                                                Image(systemName: "info.circle.fill").resizable().scaledToFit()
+                                                    .frame(width: StudioGlyph.viewerInfo.size * 19.46 / 24, height: StudioGlyph.viewerInfo.size * 19.46 / 24)
+                                                    .frame(width: StudioGlyph.viewerInfo.size, height: StudioGlyph.viewerInfo.size)
+                                            }
                                             else { StudioIcon(.viewerInfo) }
                                         }
                                         .frame(width: 44, height: 48)

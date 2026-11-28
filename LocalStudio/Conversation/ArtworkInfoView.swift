@@ -55,7 +55,18 @@ struct ArtworkInfoView: View {
 
             if let metadata = photo.metadata {
                 VStack(spacing: 12) {
-                    field("Seed", String(metadata.seed))
+                    HStack(spacing: 16) {
+                        Text("Seed").foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                        Text(String(metadata.seed)).textSelection(.enabled)
+                        Button {
+                            UIPasteboard.general.string = String(metadata.seed)
+                            UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        } label: { StudioIcon(.copyAction) }
+                            .buttonStyle(.plain).foregroundStyle(.secondary)
+                            .accessibilityLabel("Copy seed")
+                    }
+                    .font(.system(size: 14))
                     field("Schedule", metadata.scheduler)
                     if let seconds = metadata.requestSeconds {
                         field("Request time", seconds.formatted(.number.precision(.fractionLength(1))) + " s")
@@ -63,7 +74,6 @@ struct ArtworkInfoView: View {
                     field("Model file", metadata.diffusionModel)
                     field("Text encoder", metadata.encoder)
                     field("VAE", metadata.vae)
-                    field("Sigmas", metadata.sigmas)
                 }
                 .padding(16)
                 .background(Color(white: 0.12), in: .rect(cornerRadius: 24))
@@ -99,7 +109,16 @@ struct ArtworkInfoView: View {
 
     private func promptCard(_ title: String, text: String) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
+            HStack {
+                Text(title).font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Button {
+                    UIPasteboard.general.string = text
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                } label: { StudioIcon(.copyAction) }
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                    .accessibilityLabel("Copy \(title.lowercased())")
+            }
             Text(text).font(.system(size: 16)).textSelection(.enabled)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
