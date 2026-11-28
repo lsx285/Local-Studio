@@ -14,12 +14,27 @@ struct StudioModel: Decodable, Identifiable, Sendable {
     let cfg: Double
     let sampler: String
     let scheduler: String
+    let negative: String
+
+    /// The published sampling preset, before any changes in Settings.
+    var preset: SamplingSettings {
+        SamplingSettings(steps: steps, cfg: cfg, sampler: sampler, scheduler: scheduler, negativePrompt: negative)
+    }
 
     var capability: String {
         if id == "qwen-chat" { return "Text chat and prompt enhancement" }
         if family == "chat" { return "Image chat and visual prompts" }
         return generation && editing ? "Generate and edit" : editing ? "Edit images" : "Generate images"
     }
+}
+
+/// Per-model sampling choices sent with each image request.
+struct SamplingSettings: Codable, Equatable, Sendable {
+    var steps: Int
+    var cfg: Double
+    var sampler: String
+    var scheduler: String
+    var negativePrompt: String
 }
 
 struct GenerationMetadata: Codable, Equatable, Sendable {
@@ -78,6 +93,8 @@ private struct StudioError: LocalizedError {
 @MainActor @Observable
 final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegate, @preconcurrency NetServiceDelegate {
     var models: [StudioModel] = []
+    private(set) var samplers: [String] = []
+    private(set) var schedulers: [String] = []
     var status = "Searching for your PC…"
     private(set) var isConnected = false
     private var baseURL: URL?
@@ -146,11 +163,13 @@ final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegat
         let candidate = connectedService
         do {
             let data = try await request("local-studio/catalog", timeout: 4)
-            struct Catalog: Decodable { let version: Int; let models: [StudioModel] }
+            struct Catalog: Decodable { let version: Int; let models: [StudioModel]; let samplers: [String]; let schedulers: [String] }
             let catalog = try JSONDecoder().decode(Catalog.self, from: data)
             guard candidate == connectedService else { return }
-            guard catalog.version == 2 else { throw StudioError(message: "Update the Local Studio ComfyUI extension.") }
+            guard catalog.version == 3 else { throw StudioError(message: "Update the Local Studio ComfyUI extension.") }
             models = catalog.models
+            samplers = catalog.samplers
+            schedulers = catalog.schedulers
             isConnected = true
             status = "Connected"
             discoveryTask?.cancel()
@@ -213,7 +232,7 @@ final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegat
     }
 
     func run(model: String, prompt: String, photos: [Data], messages: [[String: String]], enhance: Bool = false,
-             width: Int, height: Int, maxTokens: Int, event: (StudioEvent) -> Void) async throws -> StudioResult {
+             width: Int, height: Int, maxTokens: Int, sampling: SamplingSettings, event: (StudioEvent) -> Void) async throws -> StudioResult {
         guard let baseURL else { throw StudioError(message: "No PC found. Start ComfyUI on the same network.") }
         let started = Date.now
         let requestID = UUID().uuidString.lowercased()
@@ -248,7 +267,9 @@ final class StudioConnection: NSObject, @preconcurrency NetServiceBrowserDelegat
                 var metadata = try decoder.decode(GenerationMetadata.self, from: await request("local-studio/run", body: [
                     "model": model, "prompt": prompt, "images": filenames, "messages": messages,
                     "enhance": enhance, "client_id": clientID, "request_id": requestID,
-                    "width": width, "height": height, "max_tokens": maxTokens
+                    "width": width, "height": height, "max_tokens": maxTokens,
+                    "steps": sampling.steps, "cfg": sampling.cfg, "sampler": sampling.sampler,
+                    "scheduler": sampling.scheduler, "negative_prompt": sampling.negativePrompt
                 ]))
                 event(.stage("Queued on your PC…"))
                 var text = ""

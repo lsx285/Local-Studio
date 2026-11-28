@@ -16,6 +16,8 @@ final class ChatSession {
     var canvasWidth: Int { canvasSize.width }
     var canvasHeight: Int { canvasSize.height }
     var maxTokens = 1024
+    /// Sampling changes made in Settings, by model ID; a model without an entry uses its published preset.
+    var sampling: [String: SamplingSettings] = [:]
     var isEnhancing = false
     var generationError: String?
     var generationStage = "Queued on your PC..."
@@ -55,11 +57,17 @@ final class ChatSession {
 
     init() {
         let defaults = UserDefaults.standard
-        defaults.register(defaults: ["model": "qwen-chat", "canvasMegapixels": 1.0, "canvasAspectRatio": "1:1", "maxTokens": 1024])
+        defaults.register(defaults: ["model": "qwen-chat", "canvasMegapixels": 1.0, "canvasAspectRatio": "1:1", "maxTokens": 1024,
+                                     "sampling": Data("{}".utf8)])
         selectedModelID = defaults.string(forKey: "model")!
         canvasMegapixels = defaults.double(forKey: "canvasMegapixels")
         canvasAspectRatio = CanvasAspectRatio(rawValue: defaults.string(forKey: "canvasAspectRatio")!)!
         maxTokens = defaults.integer(forKey: "maxTokens")
+        sampling = try! JSONDecoder().decode([String: SamplingSettings].self, from: defaults.data(forKey: "sampling")!)
+    }
+
+    func samplingSettings(for model: StudioModel) -> SamplingSettings {
+        sampling[model.id] ?? model.preset
     }
 
     func saveSettings() {
@@ -68,6 +76,7 @@ final class ChatSession {
         defaults.set(canvasMegapixels, forKey: "canvasMegapixels")
         defaults.set(canvasAspectRatio.rawValue, forKey: "canvasAspectRatio")
         defaults.set(maxTokens, forKey: "maxTokens")
+        defaults.set(try! JSONEncoder().encode(sampling), forKey: "sampling")
     }
 
     func restore() async {
@@ -111,7 +120,7 @@ final class ChatSession {
     }
 
     func send() {
-        guard canSend, !isGenerating else { return }
+        guard canSend, !isGenerating, let model = selectedModel else { return }
         let prompt = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         let photos = attachments
         withAnimation(.spring(response: 0.44, dampingFraction: 0.86)) {
@@ -120,7 +129,8 @@ final class ChatSession {
             attachments = []
         }
         persist()
-        generate(prompt: prompt, photos: photos, modelID: selectedModelID, width: canvasWidth, height: canvasHeight, maxTokens: maxTokens)
+        generate(prompt: prompt, photos: photos, modelID: model.id, width: canvasWidth, height: canvasHeight, maxTokens: maxTokens,
+                 sampling: samplingSettings(for: model))
     }
 
     func retry(_ message: ChatMessage) {
@@ -128,20 +138,29 @@ final class ChatSession {
               let index = messages.firstIndex(where: { $0.id == message.id }),
               let prompt = messages[..<index].last(where: { $0.role == .user }),
               let metadata = message.metadata else { return }
-        // Repeat the original request's model, canvas and length; only the seed is new, so the retry is a fresh take.
+        // Repeat the original request's model, canvas, length and sampling; only the seed is new, so the retry is a fresh take.
+        let recorded = metadata.steps.map { steps in
+            SamplingSettings(steps: steps, cfg: metadata.cfg ?? 0, sampler: metadata.sampler ?? "", scheduler: metadata.scheduler ?? "",
+                             negativePrompt: metadata.negativePrompt ?? "")
+        }
+        guard let sampling = recorded ?? connection.models.first(where: { $0.id == metadata.modelId })?.preset else {
+            generationError = "The original model for this response isn’t installed."
+            return
+        }
         generate(prompt: prompt.text, photos: prompt.attachments, modelID: metadata.modelId, replacing: message.id,
-                 width: metadata.width, height: metadata.height, maxTokens: metadata.maxTokens)
+                 width: metadata.width, height: metadata.height, maxTokens: metadata.maxTokens, sampling: sampling)
     }
 
     private func generate(prompt: String, photos: [PhotoAttachment], modelID: String, replacing messageID: UUID? = nil,
-                          width: Int, height: Int, maxTokens: Int) {
+                          width: Int, height: Int, maxTokens: Int, sampling: SamplingSettings) {
         let responseID = messageID ?? UUID()
         let previous = messageID.flatMap { id in messages.first { $0.id == id } }
         let historyEnd = messageID.flatMap { id in messages.firstIndex { $0.id == id } } ?? messages.endIndex
         let history = messages[..<historyEnd].filter { $0.role == .user || !$0.text.isEmpty }.map { ["role": $0.role.rawValue, "text": $0.text] }
-        isImageGeneration = connection.models.first { $0.id == modelID }?.family != "chat"
-        // Reference edits keep the first reference's proportions on the PC.
-        if let reference = photos.first?.image.size, reference.width > 0, reference.height > 0 {
+        let family = connection.models.first { $0.id == modelID }?.family
+        isImageGeneration = family != "chat"
+        // Qwen edits keep the first reference's proportions on the PC; Fibo edits take the requested canvas.
+        if family == "qwen", let reference = photos.first?.image.size, reference.width > 0, reference.height > 0 {
             generationAspectRatio = reference.width / reference.height
         } else {
             generationAspectRatio = Double(width) / Double(height)
@@ -171,7 +190,7 @@ final class ChatSession {
             var lastTextUpdate = clock.now - .seconds(1)
             do {
                 let result = try await connection.run(model: modelID, prompt: prompt, photos: photos.map(\.data), messages: history,
-                                                       width: width, height: height, maxTokens: maxTokens) { event in
+                                                       width: width, height: height, maxTokens: maxTokens, sampling: sampling) { event in
                     switch event {
                     case .text(let text):
                         let now = clock.now
@@ -211,9 +230,11 @@ final class ChatSession {
     }
 
     func enhancePrompt() {
-        guard canEnhance else { return }
+        guard canEnhance, let selected = selectedModel else { return }
         let original = draft
-        let model = selectedModelID
+        let model = selected.id
+        // Enhancement runs on the text model; the PC ignores sampling for it.
+        let modelSampling = samplingSettings(for: selected)
         let photos = attachments.map(\.data)
         isEnhancing = true
         generationTask = Task { [weak self] in
@@ -224,7 +245,8 @@ final class ChatSession {
                 let clock = ContinuousClock()
                 var lastTextUpdate = clock.now - .seconds(1)
                 let result = try await connection.run(model: model, prompt: original, photos: photos, messages: [], enhance: true,
-                                                       width: canvasWidth, height: canvasHeight, maxTokens: maxTokens) { event in
+                                                       width: canvasWidth, height: canvasHeight, maxTokens: maxTokens,
+                                                       sampling: modelSampling) { event in
                     guard case .text(let text) = event else { return }
                     guard self.draft == streamedDraft else { self.cancelGeneration(); return }
                     let now = clock.now

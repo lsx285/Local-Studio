@@ -22,8 +22,47 @@ struct StudioSettingsView: View {
                         }
                     }
                     .pickerStyle(.menu)
-                    Text("Reference-based edits preserve the source aspect ratio.")
+                    Text("Fibo edits crop the source to this canvas. Qwen edits keep the source size.")
                         .font(.footnote).foregroundStyle(.secondary)
+                }
+                if let model = session.selectedModel, model.family != "chat" {
+                    let settings = Binding(get: { session.samplingSettings(for: model) }, set: { session.sampling[model.id] = $0 })
+                    Section(model.name) {
+                        Stepper(value: settings.steps, in: 1...200) {
+                            LabeledContent("Steps", value: String(settings.wrappedValue.steps))
+                        }
+                        VStack(alignment: .leading, spacing: 10) {
+                            LabeledContent("CFG", value: settings.wrappedValue.cfg.formatted(.number.precision(.fractionLength(1))))
+                            Slider(value: settings.cfg, in: 1...15, step: 0.5)
+                                .accessibilityLabel("CFG scale")
+                        }
+                        Picker("Sampler", selection: settings.sampler) {
+                            ForEach(session.connection.samplers, id: \.self) { Text($0).tag($0) }
+                        }
+                        .pickerStyle(.menu)
+                        Picker("Scheduler", selection: settings.scheduler) {
+                            ForEach(session.connection.schedulers, id: \.self) { Text($0).tag($0) }
+                        }
+                        .pickerStyle(.menu)
+                        VStack(alignment: .leading, spacing: 6) {
+                            TextField("Negative prompt", text: settings.negativePrompt, axis: .vertical)
+                                .lineLimit(1...5)
+                                .disabled(settings.wrappedValue.cfg <= 1)
+                                .opacity(settings.wrappedValue.cfg <= 1 ? 0.4 : 1)
+                            if settings.wrappedValue.cfg <= 1 {
+                                // ComfyUI skips the negative pass entirely at CFG 1.
+                                Text("Raise CFG above 1 to use a negative prompt.")
+                                    .font(.footnote).foregroundStyle(.secondary)
+                            }
+                        }
+                        Button("Reset to preset") { session.sampling[model.id] = nil }
+                            .disabled(settings.wrappedValue == model.preset)
+                    }
+                    // A tick for each step, CFG notch and menu choice; typing a negative prompt stays silent.
+                    .sensoryFeedback(.selection, trigger: settings.wrappedValue.steps)
+                    .sensoryFeedback(.selection, trigger: settings.wrappedValue.cfg)
+                    .sensoryFeedback(.selection, trigger: settings.wrappedValue.sampler)
+                    .sensoryFeedback(.selection, trigger: settings.wrappedValue.scheduler)
                 }
                 Section("Text") {
                     Picker("Maximum response length", selection: $session.maxTokens) {
@@ -48,7 +87,7 @@ struct StudioSettingsView: View {
                             }
                         }
                     }
-                    Text("Sampling presets follow the published workflows. Fibo Turbo’s four-step preset is preserved.")
+                    Text("Presets follow the published workflows. Fibo Edit Turbo is distilled for four steps at CFG 1.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }

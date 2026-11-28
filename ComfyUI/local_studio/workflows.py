@@ -1,26 +1,26 @@
 import secrets
 import math
 
-from PIL import Image
-
 import folder_paths
+from comfy.samplers import KSampler
 
 
 MODELS = [
     dict(id="qwen-chat", name="Qwen Heretic", family="chat", generation=False, editing=False,
-         encoder="qwen3-vl-4b-heretic_nvfp4.safetensors", clip_type="stable_diffusion", steps=0, cfg=0, sampler="", scheduler=""),
+         encoder="qwen3-vl-4b-heretic_nvfp4.safetensors", clip_type="stable_diffusion", steps=0, cfg=0, sampler="", scheduler="", negative=""),
     dict(id="fibo-dev", name="Fibo 2.0 Dev", family="fibo", generation=True, editing=True,
          weights="fibo2_dev_nvfp4.safetensors", encoder="qwen3vl_4b_bf16.safetensors",
-         vae="flux2-vae.safetensors", clip_type="fibo2", steps=50, cfg=5, sampler="euler", scheduler="simple"),
+         vae="flux2-vae.safetensors", clip_type="fibo2", steps=50, cfg=5, sampler="euler", scheduler="simple", negative=""),
     dict(id="moss-sft", name="MOSS Image SFT", family="moss", generation=True, editing=False,
          weights="moss_image_sft_nvfp4.safetensors", encoder="qwen3.5_9b_w4a8_gptq.safetensors",
-         vae="flux2-vae_small.safetensors", clip_type="moss_image", steps=25, cfg=2.5, sampler="er_sde", scheduler="simple"),
+         vae="flux2-vae_small.safetensors", clip_type="moss_image", steps=25, cfg=2.5, sampler="er_sde", scheduler="simple",
+         negative="worst quality, bad anatomy, watermark, jpeg artifact"),
     dict(id="fibo-edit", name="Fibo 2.0 Edit Turbo", family="fibo", generation=False, editing=True,
          weights="fibo2_edit_turbo_nvfp4.safetensors", encoder="qwen3vl_4b_bf16.safetensors",
-         vae="flux2-vae.safetensors", clip_type="fibo2", steps=4, cfg=1, sampler="euler", scheduler="simple"),
+         vae="flux2-vae.safetensors", clip_type="fibo2", steps=4, cfg=1, sampler="euler", scheduler="simple", negative=""),
     dict(id="qwen-image", name="Qwen Image 2.1", family="qwen", generation=True, editing=True,
          weights="qwen_image_2.1_nvfp4.safetensors", encoder="qwen3vl_8b_nvfp4.safetensors",
-         vae="qwen_image_2.1_vae_bf16.safetensors", clip_type="qwen_image", steps=40, cfg=1, sampler="euler", scheduler="simple"),
+         vae="qwen_image_2.1_vae_bf16.safetensors", clip_type="qwen_image", steps=40, cfg=1, sampler="euler", scheduler="simple", negative=""),
 ]
 
 
@@ -33,7 +33,6 @@ SYSTEM_ENHANCE = {
     "fibo-dev": ('Expand into a JSON image caption with short_description, objects, background_setting, lighting, '
                  'aesthetics, style_medium and text_render. Preserve exact requested visible text. Output JSON only.'),
 }
-NEGATIVE = {"moss": "worst quality, bad anatomy, watermark, jpeg artifact"}
 
 
 def installed(model):
@@ -96,22 +95,20 @@ def build_workflow(body):
     unet = node("model", "UNETLoader", unet_name=model["weights"], weight_dtype="default")
     clip = node("clip", "CLIPLoader", clip_name=model["encoder"], type=model["clip_type"], device="default")
     vae = node("vae", "VAELoader", vae_name=model["vae"])
-    negative_prompt = NEGATIVE.get(family, "")
+    steps, cfg = int(body["steps"]), float(body["cfg"])
+    sampler, scheduler, negative_prompt = body["sampler"], body["scheduler"], body["negative_prompt"]
+    if not 1 <= steps <= 200 or not 0 <= cfg <= 30:
+        raise ValueError("Steps must be between 1 and 200, CFG between 0 and 30.")
+    if sampler not in KSampler.SAMPLERS or scheduler not in KSampler.SCHEDULERS:
+        raise ValueError("This ComfyUI doesn't offer the selected sampler or scheduler.")
     if family == "fibo":
-        # Edits keep the requested pixel area at the reference's (EXIF-oriented) aspect ratio.
-        ref_width, ref_height = width, height
-        if refs:
-            with Image.open(folder_paths.get_annotated_filepath(images[0])) as reference:
-                rw, rh = reference.size
-                if reference.getexif().get(274) in (5, 6, 7, 8):
-                    rw, rh = rh, rw
-            ref_width = max(16, round(math.sqrt(width * height * rw / rh) / 16) * 16)
-            ref_height = max(16, round(math.sqrt(width * height * rh / rw) / 16) * 16)
-        positive = node("encode", "TextEncodeFibo2", clip=clip, vae=vae, prompt=prompt, negative_prompt="",
-                        width=ref_width, height=ref_height, batch_size=1, **refs)
+        # Fibo scales and center-crops a single reference to the requested canvas, so edits may change size and shape.
+        positive = node("encode", "TextEncodeFibo2", clip=clip, vae=vae, prompt=prompt, negative_prompt=negative_prompt,
+                        width=width, height=height, batch_size=1, **refs)
         negative, latent = ["encode", 1], ["encode", 2]
     elif family == "qwen":
-        positive = node("encode", "TextEncodeQwenImage21", clip=clip, vae=vae, prompt=prompt, negative_prompt="",
+        # Qwen edits sample on the source's own size; any other size shifts the edit.
+        positive = node("encode", "TextEncodeQwenImage21", clip=clip, vae=vae, prompt=prompt, negative_prompt=negative_prompt,
                         resolution=max(32, round(math.sqrt(width * height) / 32) * 32), **refs)
         negative = ["encode", 1]
         latent = ["encode", 2] if refs else node("latent", "EmptyLatentImage", width=width, height=height, batch_size=1)
@@ -119,19 +116,13 @@ def build_workflow(body):
         positive = node("positive", "CLIPTextEncode", clip=clip, text=prompt)
         negative = node("negative", "CLIPTextEncode", clip=clip, text=negative_prompt)
         latent = node("latent", "EmptyFlux2LatentImage", width=width, height=height, batch_size=1)
-        if refs:
-            node("reference", "ReferenceMultiLatent", positive=positive, negative=negative, vae=vae, resolution="resize",
-                 **{"resolution.megapixels": width * height / (1024 * 1024)},
-                 **{f"images.image{i}": value for i, value in enumerate(refs.values())})
-            positive, negative, latent = ["reference", 0], ["reference", 1], ["reference", 2]
 
-    metadata = {key: model[key] for key in ("steps", "cfg", "sampler", "scheduler")}
     samples = node("sample", "KSampler", model=unet, positive=positive, negative=negative, latent_image=latent,
-                   seed=seed, steps=model["steps"], cfg=model["cfg"], sampler_name=model["sampler"],
-                   scheduler=model["scheduler"], denoise=1.0)
+                   seed=seed, steps=steps, cfg=cfg, sampler_name=sampler, scheduler=scheduler, denoise=1.0)
     node("output", "SaveImage", images=node("decode", "VAEDecode", samples=samples, vae=vae),
          filename_prefix="LocalStudio/" + model["id"])
-    metadata.update(model=model["name"], model_id=model["id"], seed=seed, prompt=prompt, negative_prompt=negative_prompt,
+    metadata = dict(model=model["name"], model_id=model["id"], seed=seed, prompt=prompt, negative_prompt=negative_prompt,
+                    steps=steps, cfg=cfg, sampler=sampler, scheduler=scheduler,
                     diffusion_model=model["weights"], encoder=model["encoder"], vae=model["vae"],
                     width=width, height=height, max_tokens=max_tokens)
     return {"prompt": graph, "metadata": metadata}
