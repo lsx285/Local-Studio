@@ -11,6 +11,7 @@ struct ChatView: View {
     @State private var composerFullScreen = false
     @State private var composerTransitioning = false
     @State private var settingsPresented = false
+    @State private var galleryPresented = false
     @State private var viewer: ViewerRequest?
     @State private var imageFrames = ArtworkFrames()
     @State private var endVisible = true
@@ -165,10 +166,24 @@ struct ChatView: View {
                     .allowsHitTesting(!composerFullScreen)
                     .padding(.horizontal, 20)
                 }
+                // While the gallery is open, any touch outside it closes it. This layer sits above the
+                // conversation and header but beneath the composer inset, which hosts the gallery.
+                .overlay {
+                    if galleryPresented {
+                        Color.clear
+                            .contentShape(.rect)
+                            .ignoresSafeArea()
+                            .gesture(DragGesture(minimumDistance: 0).onChanged { _ in
+                                guard galleryPresented else { return }
+                                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.24)) { galleryPresented = false }
+                            })
+                            .accessibilityAction(.escape) { galleryPresented = false }
+                    }
+                }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     ComposerView(session: session, availableWidth: width, availableHeight: viewportHeight,
                                  focused: $composerFocused, fullScreen: $composerFullScreen,
-                                 changingFullscreen: $composerTransitioning,
+                                 changingFullscreen: $composerTransitioning, pickerPresented: $galleryPresented,
                                  openAttachment: { id in
                                      composerFocused = false
                                      viewer = ViewerRequest(photos: session.attachments.map { ViewerPhoto(photo: $0, date: .now) }, selectedID: id, limited: true)
@@ -184,7 +199,8 @@ struct ChatView: View {
                     .disabled(!session.connection.isConnected)
                     .allowsHitTesting(session.connection.isConnected)
                     .opacity(session.connection.isConnected ? 1 : 0.45)
-                    .overlay(alignment: .top) {
+                    // Behind the composer, so the photo gallery it presents covers the button.
+                    .background(alignment: .top) {
                         ZStack {
                             if showsScrollButton {
                                 Button {

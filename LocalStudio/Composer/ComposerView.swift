@@ -8,10 +8,11 @@ struct ComposerView: View {
     @Binding var focused: Bool
     @Binding var fullScreen: Bool
     @Binding var changingFullscreen: Bool
+    /// Owned by the chat so a touch anywhere outside the gallery can close it.
+    @Binding var pickerPresented: Bool
     let openAttachment: (UUID) -> Void
     let reportAttachmentFrame: (UUID, CGRect) -> Void
     let send: () -> Void
-    @State private var pickerPresented = false
     @State private var fullPickerPresented = false
     @State private var pendingSelection: [PhotosPickerItem] = []
     @State private var selection: [PhotosPickerItem] = []
@@ -22,6 +23,8 @@ struct ComposerView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var railAnimation: Animation? { reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.86) }
+    /// Shared by the Enhance and send buttons as they appear and disappear.
+    private var controlAnimation: Animation { reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.3, dampingFraction: 0.82) }
 
     private func toggleFullscreen() {
         guard !changingFullscreen else { return }
@@ -78,6 +81,8 @@ struct ComposerView: View {
             ? ComposerEditor.measuredHeight(text: draft, width: max(1, availableWidth - 56), reserve: showsExpansionControl) : 32
         let horizontalInset: CGFloat = fullScreen ? 0 : expanded || focused ? 12 : 34
         let canSend = session.canSend
+        let showsEnhance = session.isEnhancing || !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let showsSend = session.isGenerating || canSend
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 Menu {
@@ -122,6 +127,12 @@ struct ComposerView: View {
                     }
                 }
                 .disabled(!session.canEnhance && !session.isEnhancing)
+                .opacity(showsEnhance ? 1 : 0)
+                .scaleEffect(showsEnhance || reduceMotion ? 1 : 0.7)
+                .blur(radius: showsEnhance || reduceMotion ? 0 : 4)
+                .allowsHitTesting(showsEnhance)
+                .accessibilityHidden(!showsEnhance)
+                .animation(controlAnimation, value: showsEnhance)
                 .accessibilityLabel(session.isEnhancing ? "Stop prompt enhancement" : "Enhance prompt with Qwen")
             }
             .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 6)
@@ -205,10 +216,13 @@ struct ComposerView: View {
                         }
                         .frame(width: 32, height: 32)
                     }
-                    .disabled(!session.isGenerating && !canSend)
-                    .opacity(session.isGenerating || canSend ? 1 : 0)
-                    .allowsHitTesting(session.isGenerating || canSend)
-                    .accessibilityHidden(!session.isGenerating && !canSend)
+                    .disabled(!showsSend)
+                    .opacity(showsSend ? 1 : 0)
+                    .scaleEffect(showsSend || reduceMotion ? 1 : 0.7)
+                    .blur(radius: showsSend || reduceMotion ? 0 : 4)
+                    .allowsHitTesting(showsSend)
+                    .accessibilityHidden(!showsSend)
+                    .animation(controlAnimation, value: showsSend)
                     .accessibilityLabel(session.isGenerating ? "Stop generation" : "Send prompt")
 
                 }
@@ -309,6 +323,12 @@ struct ComposerView: View {
                         })
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+        }
+        .onChange(of: pickerPresented) {
+            // However the gallery closes (back button, swipe, or a touch outside it), start fresh next time.
+            guard !pickerPresented else { return }
+            galleryDrag = 0
+            pendingSelection = []
         }
         .photosPicker(isPresented: $fullPickerPresented, selection: $selection,
                       maxSelectionCount: max(1, 8 - session.attachments.count), selectionBehavior: .ordered, matching: .images, preferredItemEncoding: .current)
